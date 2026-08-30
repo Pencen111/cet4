@@ -7,6 +7,6 @@
 // 不填则页面为“本地模式”，收藏/错题只保存在当前浏览器。
 // =====================================================
 window.APP_CONFIG = {
-  supabaseUrl: "",        // 例如 "https://xxxx.supabase.co"
-  supabaseAnonKey: ""     // 例如 "eyJhbGciOi...（一长串）"
+  supabaseUrl: "https://xrcdpebabufvxulkrmvh.supabase.co",        // 例如 "https://xxxx.supabase.co"
+  supabaseAnonKey: "sb_publishable_tEtCDEP5PBjUygYB05vuoA_iIewRCxP"     // 例如 "eyJhbGciOi...（一长串）"
 };
