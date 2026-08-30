@@ -41,7 +41,9 @@
   function toEmail(username) {
     var s = String(username || '').trim();
     var name = s.replace(/[^a-zA-Z0-9_.-]/g, '').toLowerCase() || 'user';
-    return name + '@cet4.local';
+    // 注意：域名叫 .local 会被 Supabase 判为非法，改用普通 .com 域名。
+    // 已关闭邮箱确认，所以这个邮箱无需真实存在，仅用于账号标识。
+    return name + '@cet4app.com';
   }
 
   function signIn(username, password) {
