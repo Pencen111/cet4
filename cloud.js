@@ -83,7 +83,12 @@
           fav: !!row.favorite,
           wrong: row.wrong_count || 0,
           correct: row.correct_count || 0,
-          last: row.last_result || null
+          last: row.last_result || null,
+          learned: !!row.learned,
+          stage: row.stage || 0,
+          reps: row.reps || 0,
+          nextReview: row.next_review ? new Date(row.next_review).getTime() : 0,
+          lastRated: row.last_rated || null
         };
       });
       return map;
@@ -101,6 +106,11 @@
         wrong_count: s.wrong || 0,
         correct_count: s.correct || 0,
         last_result: s.last || null,
+        learned: !!s.learned,
+        stage: s.stage || 0,
+        reps: s.reps || 0,
+        next_review: s.nextReview ? new Date(s.nextReview).toISOString() : null,
+        last_rated: s.lastRated || null,
         updated_at: new Date().toISOString()
       };
     });

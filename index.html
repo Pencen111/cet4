@@ -12,6 +12,7 @@
     <div class="brand">📖 四级单词刷题</div>
     <nav class="tabs" id="tabs">
       <button class="tab active" data-view="home">🏠 首页</button>
+      <button class="tab" data-view="memorize">📖 记单词</button>
       <button class="tab" data-view="favorites">⭐ 收藏</button>
       <button class="tab" data-view="wrong">📕 错题</button>
       <button class="tab" data-view="login">👤 账号</button>
@@ -62,8 +63,17 @@
         <div class="card-title">答题方式</div>
         <div class="seg" id="modeSeg">
           <button class="seg-btn active" data-mode="choice">四选一</button>
-          <button class="seg-btn" data-mode="card">卡片速记</button>
+          <button class="seg-btn" data-mode="memorize">记单词</button>
         </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">今日任务</div>
+        <div class="task-row">
+          <div class="task-item"><div class="stat-num" id="taskDue">0</div><div class="stat-label">待复习</div></div>
+          <div class="task-item"><div class="stat-num" id="taskNew">0</div><div class="stat-label">范围新词</div></div>
+        </div>
+        <button class="btn-primary btn-big" id="goMemorize">开始记单词</button>
       </div>
 
       <div class="stats" id="homeStats">
@@ -75,6 +85,38 @@
 
       <div class="count-line" id="rangeCount"></div>
       <button class="btn-primary btn-big" id="startBtn">开始练习</button>
+    </section>
+
+    <!-- 记单词 -->
+    <section class="view" id="view-memorize">
+      <div class="card">
+        <div class="card-title">今日任务</div>
+        <div class="task-row">
+          <div class="task-item"><div class="stat-num" id="memDue">0</div><div class="stat-label">今日待复习</div></div>
+          <div class="task-item"><div class="stat-num" id="memMastered">0</div><div class="stat-label">已掌握(全部)</div></div>
+          <div class="task-item"><div class="stat-num" id="memLearned">0</div><div class="stat-label">已学(全部)</div></div>
+        </div>
+        <button class="btn-primary btn-big" id="memReviewBtn">开始复习今日词</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">背新词（当前范围 · 未学习）</div>
+        <div class="batch-row">
+          <span class="batch-label">每批</span>
+          <button class="chip batch-chip active" data-batch="20">20</button>
+          <button class="chip batch-chip" data-batch="10">10</button>
+          <button class="chip batch-chip" data-batch="30">30</button>
+          <button class="chip batch-chip" data-batch="50">50</button>
+        </div>
+        <div class="hint" id="memNewHint"></div>
+        <button class="btn-primary btn-big" id="memStartNew">开始背新词</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">范围内学习进度</div>
+        <div class="range-summary" id="memRangeSummary"></div>
+        <div id="memProgress"></div>
+      </div>
     </section>
 
     <!-- 练习 -->

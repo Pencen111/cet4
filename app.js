@@ -36,6 +36,10 @@
   /* ================= 数据与状态 ================= */
   const DATA = (window.WORD_DATA || []).slice();
 
+  const DAY = 24 * 60 * 60 * 1000;
+  const REVIEW_INTERVALS = [1, 2, 4, 7, 15]; // 天
+  const MASTER_STAGE = 5;
+
   const LS_STATE = 'cet4_word_state_v1';
   const LS_PREFS = 'cet4_prefs_v1';
 
@@ -62,7 +66,14 @@
   const savePrefs = () => saveJSON(LS_PREFS, prefs);
   function wordState(w) {
     if (!state[w]) state[w] = { fav: false, wrong: 0, correct: 0, last: null };
-    return state[w];
+    const s = state[w];
+    // 记单词字段（旧数据惰性补齐）
+    if (typeof s.learned === 'undefined') s.learned = false;
+    if (typeof s.stage === 'undefined') s.stage = 0;
+    if (typeof s.reps === 'undefined') s.reps = 0;
+    if (typeof s.nextReview === 'undefined') s.nextReview = 0;
+    if (typeof s.lastRated === 'undefined') s.lastRated = null;
+    return s;
   }
 
   // 按 单元->课 顺序去重得到课列表
@@ -100,6 +111,7 @@
     $$('.view').forEach((el) => el.classList.toggle('active', el.id === 'view-' + v));
     $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
     if (v === 'home') renderHome();
+    if (v === 'memorize') renderMemorize();
     if (v === 'favorites') renderFavorites();
     if (v === 'wrong') renderWrong();
     if (v === 'login') renderLogin();
@@ -108,7 +120,12 @@
 
   /* ================= 首页 ================= */
   let currentOrder = prefs.order;
-  let currentMode = prefs.mode;
+  let currentMode = prefs.mode === 'card' ? 'memorize' : prefs.mode;
+  let currentBatch = prefs.memBatch || 20;
+  const saveBatch = () => {
+    prefs.memBatch = currentBatch;
+    savePrefs();
+  };
 
   function initRangeSelects() {
     const opts = lessons
@@ -125,6 +142,7 @@
   function updateRangeCount() {
     const n = selectedRange().length;
     $('#rangeCount').textContent = '当前范围共 ' + n + ' 个单词';
+    if (view === 'memorize') renderMemorize();
   }
 
   function renderHome() {
@@ -142,6 +160,11 @@
     $('#stAcc').textContent = total > 0 ? Math.round((correct / total) * 100) + '%' : '--';
     $('#stFav').textContent = fav;
     $('#stWrong').textContent = wrong > 0 ? Object.keys(state).filter((w) => state[w].wrong > 0).length : 0;
+    // 今日任务
+    const due = dueWords();
+    const newCount = selectedRange().filter((d) => !wordState(d.word).learned).length;
+    $('#taskDue').textContent = due.length;
+    $('#taskNew').textContent = newCount;
     updateRangeCount();
     syncSegUI();
   }
@@ -200,6 +223,9 @@
       revealed: new Array(words.length).fill(false),
       correct: 0,
       wrong: 0,
+      know: 0,
+      fuzzy: 0,
+      unknown: 0,
       pool: words.slice(),
       optsCache: {},
     };
@@ -235,13 +261,15 @@
     const total = s.words.length;
     $('#progressFill').style.width = (((s.idx + 1) / total) * 100) + '%';
     $('#progressText').textContent = (s.idx + 1) + ' / ' + total;
-    $('#practiceScore').textContent = '✅ ' + s.correct + '  ❌ ' + s.wrong;
+    $('#practiceScore').textContent = s.mode === 'choice'
+      ? '✅ ' + s.correct + '  ❌ ' + s.wrong
+      : '认识 ' + s.know + ' · 模糊 ' + s.fuzzy + ' · 不知 ' + s.unknown;
     $('#prevBtn').disabled = s.idx === 0;
     $('#nextBtn').textContent = s.idx === total - 1 ? '完成 ✓' : '下一题 ›';
     $('#nextBtn').disabled = !s.answers[s.idx];
     const ans = s.answers[s.idx];
     if (s.mode === 'choice') renderChoice(w, ans);
-    else renderCard(w, ans);
+    else renderMemorize(w, ans);
   }
 
   function starHTML(word) {
@@ -307,12 +335,11 @@
     wireFav();
   }
 
-  function renderCard(w, ans) {
+  function renderMemorize(w, ans) {
     const revealed = session.revealed[session.idx];
-    const fav = wordState(w.word).fav;
     let html =
       '<div class="card-q">' +
-      '<div style="text-align:right;max-width:60px;margin:0 auto 6px;">' + starHTML(w) + '</div>' +
+      '<div style="display:flex;justify-content:flex-end;margin-bottom:6px;">' + starHTML(w) + '</div>' +
       '<div class="q-word">' + ESC(w.word) + '</div>' +
       '<div class="q-pos">' + ESC(w.pos || '') + '</div>' +
       '<div class="q-sublabel">' + ESC(lessonLabel({ u: w.unit, l: w.lesson })) + '</div>';
@@ -324,13 +351,16 @@
         '<div class="card-body">' +
         '<div class="card-meaning">' + ESC(w.meaning) + '</div>' +
         exampleBox(w) +
-        '<div class="card-actions">' +
-        '<button class="know-btn" id="knowBtn" ' + (ans ? 'disabled' : '') + '>😄 认识了</button>' +
-        '<button class="unknown-btn" id="unknownBtn" ' + (ans ? 'disabled' : '') + '>😵 不认识</button>' +
+        '<div class="ratings">' +
+        '<button class="rating-btn know" id="knowBtn" ' + (ans ? 'disabled' : '') + '>😄 认识</button>' +
+        '<button class="rating-btn fuzzy" id="fuzzyBtn" ' + (ans ? 'disabled' : '') + '>😐 模糊</button>' +
+        '<button class="rating-btn unknown" id="unknownBtn" ' + (ans ? 'disabled' : '') + '>😵 不认识</button>' +
         '</div>';
       if (ans) {
-        const good = ans.correct;
-        html += '<div class="answer-tag ' + (good ? 'good' : 'bad') + '">' + (good ? '✓ 已标记：认识了' : '✗ 已加入错题本') + '</div>';
+        const label = ans.rating === 'know' ? '认识' : ans.rating === 'fuzzy' ? '模糊' : '不认识';
+        const cls = ans.rating === 'know' ? 'good' : 'bad';
+        const extra = ans.rating === 'know' ? '（下次复习：' + nextReviewText(w.word) + '）' : '（明天可再复习）';
+        html += '<div class="answer-tag ' + cls + '">已记录：' + label + extra + '</div>';
       }
       html += '</div>';
     }
@@ -344,22 +374,20 @@
         renderQuestion();
       });
     }
-    const knowBtn = $('#knowBtn');
-    const unknownBtn = $('#unknownBtn');
-    if (knowBtn && !ans) {
-      knowBtn.addEventListener('click', function () {
-        session.answers[session.idx] = { correct: true, choice: 'know' };
-        session.correct += 1;
-        markAnswered(w.word, true);
-        renderQuestion();
-      });
-    }
-    if (unknownBtn && !ans) {
-      unknownBtn.addEventListener('click', function () {
-        session.answers[session.idx] = { correct: false, choice: 'unknown' };
-        session.wrong += 1;
-        markAnswered(w.word, false);
-        renderQuestion();
+    const map = { knowBtn: 'know', fuzzyBtn: 'fuzzy', unknownBtn: 'unknown' };
+    if (!ans) {
+      Object.keys(map).forEach((id) => {
+        const btn = $('#' + id);
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+          const rating = map[id];
+          session.answers[session.idx] = { rating: rating };
+          if (rating === 'know') session.know += 1;
+          else if (rating === 'fuzzy') session.fuzzy += 1;
+          else session.unknown += 1;
+          applyRating(w.word, rating);
+          renderQuestion();
+        });
       });
     }
     wireFav();
@@ -379,13 +407,144 @@
     });
   }
 
+  /* ================= 记单词 ================= */
+  function applyRating(word, rating) {
+    const s = wordState(word);
+    s.learned = true;
+    s.lastRated = rating;
+    const now = Date.now();
+    if (rating === 'know') {
+      s.reps = (s.reps || 0) + 1;
+      s.stage = Math.min((s.stage || 0) + 1, MASTER_STAGE);
+      const idx = Math.min(s.stage - 1, REVIEW_INTERVALS.length - 1);
+      s.nextReview = now + REVIEW_INTERVALS[idx] * DAY;
+    } else if (rating === 'fuzzy') {
+      s.reps = (s.reps || 0) + 1;
+      s.nextReview = now + REVIEW_INTERVALS[0] * DAY;
+    } else {
+      s.stage = 0;
+      s.nextReview = now + REVIEW_INTERVALS[0] * DAY;
+    }
+    saveState();
+    return s;
+  }
+
+  function isMastered(word) {
+    return wordState(word).stage >= MASTER_STAGE;
+  }
+
+  function dueWords() {
+    const now = Date.now();
+    return DATA.filter((d) => {
+      const s = wordState(d.word);
+      return s.learned && s.nextReview > 0 && s.nextReview <= now;
+    });
+  }
+
+  function newWordsInRange(rangeWords, batch) {
+    const un = rangeWords.filter((d) => !wordState(d.word).learned);
+    return batch ? un.slice(0, batch) : un;
+  }
+
+  function nextReviewText(word) {
+    const s = wordState(word);
+    if (!s.nextReview) return '--';
+    const d = Math.round((s.nextReview - Date.now()) / DAY);
+    if (d <= 0) return '今天';
+    return d + ' 天后';
+  }
+
+  function renderLessonProgress(range) {
+    const byL = new Map();
+    for (const d of range) {
+      const k = d.unit + '-' + d.lesson;
+      if (!byL.has(k)) byL.set(k, { u: d.unit, l: d.lesson, list: [] });
+      byL.get(k).list.push(d);
+    }
+    const keys = Array.from(byL.keys()).sort((a, b) => {
+      const [au, al] = a.split('-').map(Number);
+      const [bu, bl] = b.split('-').map(Number);
+      return au - bu || al - bl;
+    });
+    let html = '';
+    keys.forEach((k) => {
+      const g = byL.get(k);
+      const total = g.list.length;
+      const learned = g.list.filter((d) => wordState(d.word).learned).length;
+      const mastered = g.list.filter((d) => isMastered(d.word)).length;
+      const pct = Math.round((learned / total) * 100);
+      html +=
+        '<div class="lesson-row">' +
+        '<div class="lr-top"><span class="lr-label">' + ESC(lessonLabel(g)) + '</span>' +
+        '<span class="lr-num">' + learned + '/' + total +
+        (mastered ? ' <span class="lr-mastered">★' + mastered + '</span>' : '') +
+        '</span></div>' +
+        '<div class="lr-bar"><div class="lr-fill" style="width:' + pct + '%"></div></div>' +
+        '</div>';
+    });
+    if (!html) html = '<div class="empty">当前范围没有单词</div>';
+    return html;
+  }
+
+  function renderMemorize() {
+    const range = selectedRange();
+    const due = dueWords();
+    const unlearned = range.filter((d) => !wordState(d.word).learned);
+    let learnedAll = 0, masteredAll = 0;
+    for (const d of DATA) {
+      if (wordState(d.word).learned) learnedAll++;
+      if (isMastered(d.word)) masteredAll++;
+    }
+    $('#memDue').textContent = due.length;
+    $('#memLearned').textContent = learnedAll;
+    $('#memMastered').textContent = masteredAll;
+    $('#memNewHint').textContent =
+      '当前范围未学习 ' + unlearned.length + ' 词，本批将学 ' + Math.min(currentBatch, unlearned.length) + ' 词';
+    const learnedInRange = range.filter((d) => wordState(d.word).learned).length;
+    const masteredInRange = range.filter((d) => isMastered(d.word)).length;
+    $('#memRangeSummary').textContent =
+      '范围内共 ' + range.length + ' 词 · 已学 ' + learnedInRange + ' · 已掌握 ' + masteredInRange;
+    $('#memProgress').innerHTML = renderLessonProgress(range);
+    // 批次选中高亮
+    $$('.batch-chip').forEach((b) => b.classList.toggle('active', Number(b.dataset.batch) === currentBatch));
+  }
+
+  function startMemorizeNew() {
+    const range = selectedRange();
+    const words = newWordsInRange(range, currentBatch);
+    if (!words.length) { toast('当前范围没有可背的新词'); return; }
+    startPractice(words, { mode: 'memorize', order: 'seq' });
+  }
+  function startMemorizeReview() {
+    const words = dueWords();
+    if (!words.length) { toast('今日暂无待复习的词'); return; }
+    startPractice(words, { mode: 'memorize', order: 'seq' });
+  }
+
   function finish() {
     const s = session;
     const total = s.words.length;
     const answered = s.answers.filter((a) => a !== null).length;
     lastSession = s;
-    lastWrongWords = s.words.filter((w, i) => s.answers[i] && !s.answers[i].correct);
 
+    if (s.mode === 'memorize') {
+      lastWrongWords = s.words.filter((w, i) => s.answers[i] && s.answers[i].rating !== 'know');
+      $('#resultNum').textContent = s.know;
+      $('#resultLabel').textContent = '本轮认识';
+      $('#resultDet').textContent =
+        '共 ' + total + ' 词 · 认识 ' + s.know + ' · 模糊 ' + s.fuzzy + ' · 不认识 ' + s.unknown;
+      $('#retryWrong').textContent = '复习待复习';
+      const wrongListEl = $('#resultWrongList');
+      wrongListEl.innerHTML = lastWrongWords.length
+        ? '<div class="wrong-review-title">本轮待复习词（' + lastWrongWords.length + '）</div>' +
+          lastWrongWords.map(wordItemHTML).join('')
+        : '<div class="card"><div class="empty">🎉 全部认识，太棒了！</div></div>';
+      go('result');
+      return;
+    }
+
+    lastWrongWords = s.words.filter((w, i) => s.answers[i] && !s.answers[i].correct);
+    $('#retryWrong').textContent = '错题重做';
     $('#resultNum').textContent = answered === 0 ? '--' : Math.round((s.correct / answered) * 100) + '%';
     $('#resultLabel').textContent = '正确率';
     $('#resultDet').textContent = '共 ' + total + ' 题 · 已答 ' + answered + ' 题 · 答对 ' + s.correct + ' · 答错 ' + s.wrong;
@@ -608,6 +767,18 @@
     $('#startBtn').addEventListener('click', function () {
       startPractice(selectedRange(), { mode: currentMode, order: currentOrder });
     });
+
+    // 记单词
+    $('#goMemorize').addEventListener('click', () => go('memorize'));
+    $('#memReviewBtn').addEventListener('click', startMemorizeReview);
+    $('#memStartNew').addEventListener('click', startMemorizeNew);
+    $$('.batch-chip').forEach((b) =>
+      b.addEventListener('click', function () {
+        currentBatch = Number(this.dataset.batch);
+        saveBatch();
+        renderMemorize();
+      })
+    );
 
     // 练习导航
     $('#exitPractice').addEventListener('click', () => go('home'));

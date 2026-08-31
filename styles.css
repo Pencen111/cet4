@@ -362,6 +362,74 @@ select:focus, input:focus {
 }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
+/* ---------- 记单词 ---------- */
+.task-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.task-item {
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 8px;
+  text-align: center;
+}
+.batch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.batch-label { font-size: 13px; color: var(--text-soft); font-weight: 600; }
+.batch-chip.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.range-summary { font-size: 13px; color: var(--text-soft); margin-bottom: 12px; }
+
+.ratings {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.rating-btn {
+  border: none;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 14px 6px;
+  border-radius: 12px;
+  transition: transform 0.12s, opacity 0.2s;
+}
+.rating-btn:hover { transform: translateY(-1px); }
+.rating-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+.rating-btn.know { background: var(--green); }
+.rating-btn.fuzzy { background: #f0a020; }
+.rating-btn.unknown { background: var(--red); }
+
+.lesson-row { margin-bottom: 12px; }
+.lr-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+.lr-label { font-weight: 700; color: var(--text); }
+.lr-num { color: var(--text-soft); }
+.lr-mastered { color: #f0a020; margin-left: 6px; font-weight: 800; }
+.lr-bar { height: 7px; background: var(--line); border-radius: 999px; overflow: hidden; }
+.lr-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff9a3d, #ff6a00);
+  border-radius: 999px;
+  transition: width 0.3s;
+}
+
 /* ---------- responsive ---------- */
 @media (max-width: 480px) {
   .topbar { flex-direction: column; align-items: flex-start; gap: 8px; }
@@ -371,6 +439,7 @@ select:focus, input:focus {
   .range-grid { grid-template-columns: 1fr; }
   .q-wrap { padding: 18px 14px; }
   .nav-row { flex-wrap: wrap; }
+  .ratings { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 700px) {
