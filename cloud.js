@@ -20,6 +20,7 @@
     });
   }
 
+  // 开启会话持久化 + 自动刷新：登录一次后，之后打开网页都保持已登录
   function ensure() {
     if (!isConfigured()) return Promise.resolve(false);
     if (sb) return Promise.resolve(true);
@@ -27,7 +28,9 @@
       loading = (function () {
         var p = !window.supabase ? loadScript() : Promise.resolve();
         return p.then(function () {
-          sb = window.supabase.createClient(C.supabaseUrl, C.supabaseAnonKey);
+          sb = window.supabase.createClient(C.supabaseUrl, C.supabaseAnonKey, {
+            auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+          });
           return true;
         }).catch(function (e) {
           loading = null;

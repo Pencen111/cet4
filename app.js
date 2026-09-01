@@ -465,12 +465,10 @@
       '<div class="q-word">' + ESC(w.word) + '</div>' +
       '<div class="q-pos">' + ESC(w.pos || '') + '</div>' +
       '<div class="q-sublabel">' + ESC(lessonLabel({ u: w.unit, l: w.lesson })) + '</div>';
-
     if (simple) {
       html +=
         '<div class="card-body"><div class="card-meaning">' + ESC(w.meaning) + '</div>' +
-        exampleBox(w) +
-        '<div class="hint center-hint">点「下一题」继续。</div></div>';
+        exampleBox(w) + '<div class="hint center-hint">点「下一题」继续。</div></div>';
     } else {
       const revealed = session.revealed[session.idx];
       if (!revealed && !ans) {
@@ -495,7 +493,6 @@
     }
     html += '</div>';
     $('#questionBox').innerHTML = html;
-
     if (!simple) {
       const revealBtn = $('#revealBtn');
       if (revealBtn) {
@@ -559,7 +556,6 @@
     const total = s.words.length;
     const answered = s.answers.filter((a) => a !== null).length;
     lastSession = s;
-
     if (s.mode === 'memorize') {
       if (s.simple) {
         $('#resultNum').textContent = answered;
@@ -582,7 +578,6 @@
       go('result');
       return;
     }
-
     lastWrongWords = s.words.filter((w, i) => s.answers[i] && !s.answers[i].correct);
     $('#retryWrong').textContent = '错题重做';
     $('#resultNum').textContent = answered === 0 ? '--' : Math.round((s.correct / answered) * 100) + '%';
@@ -699,15 +694,35 @@
       return false;
     }
   }
+  async function autoLoginSync() {
+    if (!Cloud || !Cloud.configured()) {
+      // Sync local changes to no-op; nothing to do without cloud
+      renderLogin();
+      return;
+    }
+    try {
+      await Cloud.ensure();
+      const user = await Cloud.currentUser();
+      if (user) {
+        await mergeRemote();
+        await Cloud.push(user.id, state);
+        refreshUserPanel();
+        go(view);
+        toast('已自动登录并同步');
+      }
+    } catch (e) {
+      console.warn('auto sync failed', e);
+    }
+  }
 
   function renderLogin() {
     const banner = $('#cloudBanner');
     if (!Cloud || !Cloud.configured()) {
       banner.className = 'banner off';
-      banner.textContent = '云端同步未配置。当前为本地模式：收藏与错题仅保存在当前浏览器。配置 Supabase 后即可三端同步（见 README.md）。';
+      banner.textContent = '云端同步未配置。当前为本地模式：收藏与错题仅保存在当前浏览器。';
     } else {
       banner.className = 'banner ok';
-      banner.textContent = '云端同步已配置。登录后收藏与错题可在手机/平板/电脑之间同步。';
+      banner.textContent = '云端同步已配置。打开网页会自动登录并同步（首次需登录一次）。';
     }
     refreshUserPanel();
   }
@@ -740,7 +755,7 @@
 
   function syncStatusText() {
     const st = $('#syncStatus');
-    if (st) st.textContent = '收藏/错题已开启云端同步。';
+    if (st) st.textContent = '已登录（自动同步开启）：收藏、错题、预习/复习进度会跨设备同步。';
   }
 
   async function doAuth(action) {
@@ -791,12 +806,10 @@
 
   function bind() {
     $$('[data-view]').forEach((t) => t.addEventListener('click', () => go(t.dataset.view)));
-
     $('#prevLesson').addEventListener('change', renderPreview);
     $('#revFrom').addEventListener('change', renderReview);
     $('#revTo').addEventListener('change', renderReview);
     wireChipGroup('.rev-chip', '#revFrom', '#revTo', renderReview);
-
     $('#prevStartNew').addEventListener('click', startMemorizeNew);
     $('#revReviewBtn').addEventListener('click', startMemorizeReview);
     $('#revStartBtn').addEventListener('click', function () {
@@ -819,7 +832,6 @@
         syncSegUI();
       })
     );
-
     $('#resetPreviewBtn').addEventListener('click', resetPreview);
     $('#resetReviewBtn').addEventListener('click', resetReview);
 
@@ -869,7 +881,6 @@
       $('#favSearch').value = '';
       renderFavorites();
     });
-
     $('#favList').addEventListener('click', function (e) {
       const btn = e.target.closest('.wi-btn');
       if (!btn) return;
@@ -894,7 +905,6 @@
       toast('已移出错题本');
       renderWrong();
     });
-
     $('#loginBtn').addEventListener('click', () => doAuth('login'));
     $('#registerBtn').addEventListener('click', () => doAuth('register'));
     $('#logoutBtn').addEventListener('click', async function () {
@@ -910,6 +920,7 @@
     go('preview');
     const last = localStorage.getItem('cet4_last_user');
     if (last) $('#authUser').value = last;
+    autoLoginSync();
   }
 
   document.addEventListener('DOMContentLoaded', init);
