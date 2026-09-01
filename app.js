@@ -1,7 +1,6 @@
 (function () {
   'use strict';
 
-  /* ================= 工具 ================= */
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
   const ESC = (s) =>
@@ -33,12 +32,11 @@
     toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
   }
 
-  /* ================= 数据与状态 ================= */
   const DATA = (window.WORD_DATA || []).slice();
-
   const DAY = 24 * 60 * 60 * 1000;
-  const REVIEW_INTERVALS = [1, 2, 4, 7, 15]; // 天
+  const REVIEW_INTERVALS = [1, 2, 4, 7, 15];
   const MASTER_STAGE = 5;
+  const UNIT_NUMS = Array.from(new Set(DATA.map((d) => d.unit))).sort((a, b) => a - b);
 
   const LS_STATE = 'cet4_word_state_v1';
   const LS_PREFS = 'cet4_prefs_v1';
@@ -57,7 +55,7 @@
     } catch (e) {}
   }
 
-  let state = loadJSON(LS_STATE, {}); // { [word]: {fav,wrong,correct,last} }
+  let state = loadJSON(LS_STATE, {});
   let prefs = Object.assign({ mode: 'choice', order: 'seq' }, loadJSON(LS_PREFS, {}));
   const saveState = () => {
     saveJSON(LS_STATE, state);
@@ -67,7 +65,7 @@
   function wordState(w) {
     if (!state[w]) state[w] = { fav: false, wrong: 0, correct: 0, last: null };
     const s = state[w];
-    // 记单词字段（旧数据惰性补齐）
+    if (typeof s.previewed === 'undefined') s.previewed = false;
     if (typeof s.learned === 'undefined') s.learned = false;
     if (typeof s.stage === 'undefined') s.stage = 0;
     if (typeof s.reps === 'undefined') s.reps = 0;
@@ -76,7 +74,6 @@
     return s;
   }
 
-  // 按 单元->课 顺序去重得到课列表
   const lessons = [];
   const lessonIdx = {};
   {
@@ -104,49 +101,94 @@
     });
   }
 
-  /* ================= 导航 ================= */
-  let view = 'home';
+  let view = 'preview';
   function go(v) {
     view = v;
     $$('.view').forEach((el) => el.classList.toggle('active', el.id === 'view-' + v));
-    $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
-    if (v === 'home') renderHome();
-    if (v === 'memorize') renderMemorize();
+    $$('[data-view]').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
+    if (v === 'preview') renderPreview();
+    if (v === 'review') renderReview();
     if (v === 'favorites') renderFavorites();
     if (v === 'wrong') renderWrong();
     if (v === 'login') renderLogin();
     window.scrollTo(0, 0);
   }
 
-  /* ================= 首页 ================= */
   let currentOrder = prefs.order;
   let currentMode = prefs.mode === 'card' ? 'memorize' : prefs.mode;
-  let currentBatch = prefs.memBatch || 20;
-  const saveBatch = () => {
-    prefs.memBatch = currentBatch;
-    savePrefs();
-  };
 
-  function initRangeSelects() {
-    const opts = lessons
+  function fillLessonSelect(sel) {
+    sel.innerHTML = lessons
       .map((l) => '<option value="' + lessonKey(l.u, l.l) + '">' + ESC(lessonLabel(l)) + '</option>')
       .join('');
-    $('#rangeFrom').innerHTML = opts;
-    $('#rangeTo').innerHTML = opts;
-    $('#rangeFrom').value = lessons[0].u + '-' + lessons[0].l;
-    $('#rangeTo').value = lessons[lessons.length - 1].u + '-' + lessons[lessons.length - 1].l;
   }
-  function selectedRange() {
-    return getRangeWords($('#rangeFrom').value, $('#rangeTo').value);
+  function initRangeSelects() {
+    const pl = $('#prevLesson');
+    if (pl) {
+      fillLessonSelect(pl);
+      pl.value = lessons[0].u + '-' + lessons[0].l;
+    }
+    const rf = $('#revFrom');
+    const rt = $('#revTo');
+    if (rf && rt) {
+      fillLessonSelect(rf);
+      fillLessonSelect(rt);
+      rf.value = lessons[0].u + '-' + lessons[0].l;
+      rt.value = lessons[lessons.length - 1].u + '-' + lessons[lessons.length - 1].l;
+    }
   }
-  function updateRangeCount() {
-    const n = selectedRange().length;
-    $('#rangeCount').textContent = '当前范围共 ' + n + ' 个单词';
-    if (view === 'memorize') renderMemorize();
+  function selectedPreview() {
+    const k = $('#prevLesson').value;
+    return getRangeWords(k, k);
+  }
+  function selectedReview() {
+    return getRangeWords($('#revFrom').value, $('#revTo').value);
   }
 
-  function renderHome() {
-    // 已答 / 正确率 / 收藏 / 错题
+  function syncSegUI() {
+    $$('#orderSeg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.order === currentOrder));
+    $$('#modeSeg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === currentMode));
+  }
+
+  function renderUnitProgress() {
+    let html = '';
+    UNIT_NUMS.forEach((u) => {
+      const list = DATA.filter((d) => d.unit === u);
+      const total = list.length;
+      const previewed = list.filter((d) => wordState(d.word).previewed).length;
+      const mastered = list.filter((d) => isMastered(d.word)).length;
+      const pct = total ? Math.round((previewed / total) * 100) : 0;
+      html +=
+        '<div class="lesson-row">' +
+        '<div class="lr-top"><span class="lr-label">第 ' + u + ' 单元</span>' +
+        '<span class="lr-num">已预习 ' + previewed + '/' + total + ' · ' + pct + '%' +
+        (mastered ? ' <span class="lr-mastered">★' + mastered + '</span>' : '') +
+        '</span></div>' +
+        '<div class="lr-bar"><div class="lr-fill" style="width:' + pct + '%"></div></div>' +
+        '</div>';
+    });
+    $('#unitProgress').innerHTML = html || '<div class="empty">暂无数据</div>';
+  }
+
+  function renderPreview() {
+    const range = selectedPreview();
+    const unPre = range.filter((d) => !wordState(d.word).previewed);
+    $('#prevNewHint').textContent =
+      '本课共 ' + range.length + ' 词，未预习 ' + unPre.length + ' 词，点「开始背新单词」预习全部未预习的词。';
+    renderUnitProgress();
+  }
+
+  function renderReview() {
+    const due = dueWords();
+    let learnedAll = 0, masteredAll = 0;
+    for (const d of DATA) {
+      if (wordState(d.word).learned) learnedAll++;
+      if (isMastered(d.word)) masteredAll++;
+    }
+    $('#revDue').textContent = due.length;
+    $('#revLearned').textContent = learnedAll;
+    $('#revMem').textContent = masteredAll;
+
     let answered = 0, correct = 0, wrong = 0, fav = 0;
     for (const w of Object.keys(state)) {
       const s = state[w];
@@ -160,33 +202,114 @@
     $('#stAcc').textContent = total > 0 ? Math.round((correct / total) * 100) + '%' : '--';
     $('#stFav').textContent = fav;
     $('#stWrong').textContent = wrong > 0 ? Object.keys(state).filter((w) => state[w].wrong > 0).length : 0;
-    // 今日任务
-    const due = dueWords();
-    const newCount = selectedRange().filter((d) => !wordState(d.word).learned).length;
-    $('#taskDue').textContent = due.length;
-    $('#taskNew').textContent = newCount;
-    updateRangeCount();
+
+    const range = selectedReview();
+    $('#revRangeCount').textContent = '当前复习范围共 ' + range.length + ' 个单词';
+    const mastered = range.filter((d) => isMastered(d.word)).length;
+    $('#revProgressSummary').textContent = '范围内共 ' + range.length + ' 词 · 已掌握 ' + mastered + ' · 已复习 ' + range.filter((d) => wordState(d.word).learned).length;
+    $('#revProgress').innerHTML = renderLessonProgress(range, true);
     syncSegUI();
   }
 
-  function syncSegUI() {
-    $$('#orderSeg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.order === currentOrder));
-    $$('#modeSeg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === currentMode));
-  }
-
-  function markAnswered(word, ok) {
+  function markPreviewed(word) {
     const s = wordState(word);
-    if (ok) {
-      s.correct = (s.correct || 0) + 1;
-      s.last = 'c';
-    } else {
-      s.wrong = (s.wrong || 0) + 1;
-      s.last = 'w';
+    if (!s.previewed) s.previewed = true;
+    if (!s.learned) {
+      s.learned = true;
+      s.stage = Math.min((s.stage || 0) + 1, MASTER_STAGE);
+      s.reps = (s.reps || 0) + 1;
+      s.nextReview = Date.now() + REVIEW_INTERVALS[0] * DAY;
+      s.lastRated = 'know';
     }
     saveState();
   }
 
-  /* ================= 练习 ================= */
+  function applyRating(word, rating) {
+    const s = wordState(word);
+    s.learned = true;
+    s.lastRated = rating;
+    const now = Date.now();
+    if (rating === 'know') {
+      s.reps = (s.reps || 0) + 1;
+      s.stage = Math.min((s.stage || 0) + 1, MASTER_STAGE);
+      const idx = Math.min(s.stage - 1, REVIEW_INTERVALS.length - 1);
+      s.nextReview = now + REVIEW_INTERVALS[idx] * DAY;
+    } else if (rating === 'fuzzy') {
+      s.reps = (s.reps || 0) + 1;
+      s.nextReview = now + REVIEW_INTERVALS[0] * DAY;
+    } else {
+      s.stage = 0;
+      s.nextReview = now + REVIEW_INTERVALS[0] * DAY;
+    }
+    saveState();
+    return s;
+  }
+
+  function isMastered(word) {
+    return wordState(word).stage >= MASTER_STAGE;
+  }
+
+  function dueWords() {
+    const now = Date.now();
+    return DATA.filter((d) => {
+      const s = wordState(d.word);
+      return s.learned && s.nextReview > 0 && s.nextReview <= now;
+    });
+  }
+
+  function nextReviewText(word) {
+    const s = wordState(word);
+    if (!s.nextReview) return '--';
+    const d = Math.round((s.nextReview - Date.now()) / DAY);
+    if (d <= 0) return '今天';
+    return d + ' 天后';
+  }
+
+  function renderLessonProgress(range, useMastered) {
+    const byL = new Map();
+    for (const d of range) {
+      const k = d.unit + '-' + d.lesson;
+      if (!byL.has(k)) byL.set(k, { u: d.unit, l: d.lesson, list: [] });
+      byL.get(k).list.push(d);
+    }
+    const keys = Array.from(byL.keys()).sort((a, b) => {
+      const [au, al] = a.split('-').map(Number);
+      const [bu, bl] = b.split('-').map(Number);
+      return au - bu || al - bl;
+    });
+    let html = '';
+    keys.forEach((k) => {
+      const g = byL.get(k);
+      const total = g.list.length;
+      const doneCount = useMastered
+        ? g.list.filter((d) => isMastered(d.word)).length
+        : g.list.filter((d) => wordState(d.word).learned).length;
+      const starred = g.list.filter((d) => isMastered(d.word)).length;
+      const pct = Math.round((doneCount / total) * 100);
+      html +=
+        '<div class="lesson-row">' +
+        '<div class="lr-top"><span class="lr-label">' + ESC(lessonLabel(g)) + '</span>' +
+        '<span class="lr-num">' + (useMastered ? '已掌握 ' : '') + doneCount + '/' + total +
+        (starred ? ' <span class="lr-mastered">★' + starred + '</span>' : '') +
+        '</span></div>' +
+        '<div class="lr-bar"><div class="lr-fill" style="width:' + pct + '%"></div></div>' +
+        '</div>';
+    });
+    if (!html) html = '<div class="empty">当前范围没有单词</div>';
+    return html;
+  }
+
+  function startMemorizeNew() {
+    const words = selectedPreview().filter((d) => !wordState(d.word).previewed);
+    if (!words.length) { toast('本课没有可预习的新词'); return; }
+    startPractice(words, { mode: 'memorize', order: 'seq', simple: true, returnView: 'preview' });
+  }
+  function startMemorizeReview() {
+    const words = dueWords();
+    if (!words.length) { toast('今日暂无待复习的词'); return; }
+    startPractice(words, { mode: 'memorize', order: 'seq', returnView: 'review' });
+  }
+
   let session = null;
   let lastSession = null;
   let lastWrongWords = [];
@@ -207,13 +330,15 @@
     return words.slice();
   }
 
+  function isStudyView(v) {
+    return v === 'preview' || v === 'review' || v === 'favorites' || v === 'wrong';
+  }
+
   function startPractice(words, opts) {
-    if (!words.length) {
-      toast('该范围没有单词');
-      return;
-    }
+    if (!words.length) { toast('该范围没有单词'); return; }
     const mode = opts.mode || currentMode;
     const order = opts.order || currentOrder;
+    const returnView = (opts && opts.returnView) ? opts.returnView : (isStudyView(view) ? view : 'review');
     session = {
       words: orderWords(words, order),
       mode,
@@ -228,6 +353,8 @@
       unknown: 0,
       pool: words.slice(),
       optsCache: {},
+      returnView,
+      simple: !!(opts && opts.simple),
     };
     lastSession = session;
     go('practice');
@@ -263,13 +390,13 @@
     $('#progressText').textContent = (s.idx + 1) + ' / ' + total;
     $('#practiceScore').textContent = s.mode === 'choice'
       ? '✅ ' + s.correct + '  ❌ ' + s.wrong
-      : '认识 ' + s.know + ' · 模糊 ' + s.fuzzy + ' · 不知 ' + s.unknown;
+      : (s.simple ? '已学 ' + s.know : '认识 ' + s.know + ' · 模糊 ' + s.fuzzy + ' · 不知 ' + s.unknown);
     $('#prevBtn').disabled = s.idx === 0;
     $('#nextBtn').textContent = s.idx === total - 1 ? '完成 ✓' : '下一题 ›';
-    $('#nextBtn').disabled = !s.answers[s.idx];
+    $('#nextBtn').disabled = s.mode === 'choice' ? !s.answers[s.idx] : false;
     const ans = s.answers[s.idx];
     if (s.mode === 'choice') renderChoice(w, ans);
-    else renderMemorize(w, ans);
+    else renderMemorizeQuestion(w, ans);
   }
 
   function starHTML(word) {
@@ -294,9 +421,7 @@
     let optsHtml = '<div class="opts">';
     if (!ans) {
       opts.forEach((m, i) => {
-        optsHtml +=
-          '<button class="opt" data-i="' + i + '"><span class="letter">' + letters[i] + '</span><span>' +
-          ESC(m) + '</span></button>';
+        optsHtml += '<button class="opt" data-i="' + i + '"><span class="letter">' + letters[i] + '</span><span>' + ESC(m) + '</span></button>';
       });
     } else {
       const correctMeaning = w.meaning.trim();
@@ -304,9 +429,7 @@
         let cls = 'opt';
         if (m === correctMeaning) cls += ' correct';
         else if (m === opts[ans.pickedIndex]) cls += ' wrong';
-        optsHtml +=
-          '<button class="' + cls + '" disabled><span class="letter">' + letters[i] + '</span><span>' +
-          ESC(m) + '</span></button>';
+        optsHtml += '<button class="' + cls + '" disabled><span class="letter">' + letters[i] + '</span><span>' + ESC(m) + '</span></button>';
       });
     }
     optsHtml += '</div>';
@@ -318,7 +441,6 @@
         exampleBox(w);
     }
     $('#questionBox').innerHTML = head + optsHtml + tail;
-
     if (!ans) {
       $$('#questionBox .opt').forEach((btn) => {
         btn.addEventListener('click', function () {
@@ -335,8 +457,8 @@
     wireFav();
   }
 
-  function renderMemorize(w, ans) {
-    const revealed = session.revealed[session.idx];
+  function renderMemorizeQuestion(w, ans) {
+    const simple = !!session.simple;
     let html =
       '<div class="card-q">' +
       '<div style="display:flex;justify-content:flex-end;margin-bottom:6px;">' + starHTML(w) + '</div>' +
@@ -344,53 +466,78 @@
       '<div class="q-pos">' + ESC(w.pos || '') + '</div>' +
       '<div class="q-sublabel">' + ESC(lessonLabel({ u: w.unit, l: w.lesson })) + '</div>';
 
-    if (!revealed && !ans) {
-      html += '<div><button class="reveal-btn" id="revealBtn">显示释义</button></div>';
-    } else {
+    if (simple) {
       html +=
-        '<div class="card-body">' +
-        '<div class="card-meaning">' + ESC(w.meaning) + '</div>' +
+        '<div class="card-body"><div class="card-meaning">' + ESC(w.meaning) + '</div>' +
         exampleBox(w) +
-        '<div class="ratings">' +
-        '<button class="rating-btn know" id="knowBtn" ' + (ans ? 'disabled' : '') + '>😄 认识</button>' +
-        '<button class="rating-btn fuzzy" id="fuzzyBtn" ' + (ans ? 'disabled' : '') + '>😐 模糊</button>' +
-        '<button class="rating-btn unknown" id="unknownBtn" ' + (ans ? 'disabled' : '') + '>😵 不认识</button>' +
-        '</div>';
-      if (ans) {
-        const label = ans.rating === 'know' ? '认识' : ans.rating === 'fuzzy' ? '模糊' : '不认识';
-        const cls = ans.rating === 'know' ? 'good' : 'bad';
-        const extra = ans.rating === 'know' ? '（下次复习：' + nextReviewText(w.word) + '）' : '（明天可再复习）';
-        html += '<div class="answer-tag ' + cls + '">已记录：' + label + extra + '</div>';
+        '<div class="hint center-hint">点「下一题」继续。</div></div>';
+    } else {
+      const revealed = session.revealed[session.idx];
+      if (!revealed && !ans) {
+        html += '<div><button class="reveal-btn" id="revealBtn">显示释义</button></div>';
+      } else {
+        html += '<div class="card-body"><div class="card-meaning">' + ESC(w.meaning) + '</div>' + exampleBox(w);
+        if (!ans) {
+          html +=
+            '<div class="ratings">' +
+            '<button class="rating-btn know" id="knowBtn">😄 认识</button>' +
+            '<button class="rating-btn fuzzy" id="fuzzyBtn">😐 模糊</button>' +
+            '<button class="rating-btn unknown" id="unknownBtn">😵 不认识</button>' +
+            '</div>';
+        } else {
+          const label = ans.rating === 'know' ? '认识' : ans.rating === 'fuzzy' ? '模糊' : '不认识';
+          const cls = ans.rating === 'know' ? 'good' : 'bad';
+          const extra = ans.rating === 'know' ? '（下次复习：' + nextReviewText(w.word) + '）' : '（明天可再复习）';
+          html += '<div class="answer-tag ' + cls + '">已记录：' + label + extra + '</div>';
+        }
+        html += '</div>';
       }
-      html += '</div>';
     }
     html += '</div>';
     $('#questionBox').innerHTML = html;
 
-    const revealBtn = $('#revealBtn');
-    if (revealBtn) {
-      revealBtn.addEventListener('click', function () {
-        session.revealed[session.idx] = true;
-        renderQuestion();
-      });
-    }
-    const map = { knowBtn: 'know', fuzzyBtn: 'fuzzy', unknownBtn: 'unknown' };
-    if (!ans) {
-      Object.keys(map).forEach((id) => {
-        const btn = $('#' + id);
-        if (!btn) return;
-        btn.addEventListener('click', function () {
-          const rating = map[id];
-          session.answers[session.idx] = { rating: rating };
-          if (rating === 'know') session.know += 1;
-          else if (rating === 'fuzzy') session.fuzzy += 1;
-          else session.unknown += 1;
-          applyRating(w.word, rating);
+    if (!simple) {
+      const revealBtn = $('#revealBtn');
+      if (revealBtn) {
+        revealBtn.addEventListener('click', function () {
+          session.revealed[session.idx] = true;
           renderQuestion();
         });
-      });
+      }
+      const map = { knowBtn: 'know', fuzzyBtn: 'fuzzy', unknownBtn: 'unknown' };
+      if (!ans) {
+        Object.keys(map).forEach((id) => {
+          const btn = $('#' + id);
+          if (!btn) return;
+          btn.addEventListener('click', function () {
+            const rating = map[id];
+            session.answers[session.idx] = { rating: rating };
+            if (rating === 'know') session.know += 1;
+            else if (rating === 'fuzzy') session.fuzzy += 1;
+            else session.unknown += 1;
+            applyRating(w.word, rating);
+            renderQuestion();
+          });
+        });
+      }
+    } else if (!ans) {
+      session.answers[session.idx] = { rating: 'know', auto: true };
+      session.know += 1;
+      markPreviewed(w.word);
     }
     wireFav();
+  }
+
+  function markAnswered(word, ok) {
+    const s = wordState(word);
+    if (ok) {
+      s.correct = (s.correct || 0) + 1;
+      s.last = 'c';
+    } else {
+      s.wrong = (s.wrong || 0) + 1;
+      s.last = 'w';
+    }
+    saveState();
   }
 
   function wireFav() {
@@ -407,120 +554,6 @@
     });
   }
 
-  /* ================= 记单词 ================= */
-  function applyRating(word, rating) {
-    const s = wordState(word);
-    s.learned = true;
-    s.lastRated = rating;
-    const now = Date.now();
-    if (rating === 'know') {
-      s.reps = (s.reps || 0) + 1;
-      s.stage = Math.min((s.stage || 0) + 1, MASTER_STAGE);
-      const idx = Math.min(s.stage - 1, REVIEW_INTERVALS.length - 1);
-      s.nextReview = now + REVIEW_INTERVALS[idx] * DAY;
-    } else if (rating === 'fuzzy') {
-      s.reps = (s.reps || 0) + 1;
-      s.nextReview = now + REVIEW_INTERVALS[0] * DAY;
-    } else {
-      s.stage = 0;
-      s.nextReview = now + REVIEW_INTERVALS[0] * DAY;
-    }
-    saveState();
-    return s;
-  }
-
-  function isMastered(word) {
-    return wordState(word).stage >= MASTER_STAGE;
-  }
-
-  function dueWords() {
-    const now = Date.now();
-    return DATA.filter((d) => {
-      const s = wordState(d.word);
-      return s.learned && s.nextReview > 0 && s.nextReview <= now;
-    });
-  }
-
-  function newWordsInRange(rangeWords, batch) {
-    const un = rangeWords.filter((d) => !wordState(d.word).learned);
-    return batch ? un.slice(0, batch) : un;
-  }
-
-  function nextReviewText(word) {
-    const s = wordState(word);
-    if (!s.nextReview) return '--';
-    const d = Math.round((s.nextReview - Date.now()) / DAY);
-    if (d <= 0) return '今天';
-    return d + ' 天后';
-  }
-
-  function renderLessonProgress(range) {
-    const byL = new Map();
-    for (const d of range) {
-      const k = d.unit + '-' + d.lesson;
-      if (!byL.has(k)) byL.set(k, { u: d.unit, l: d.lesson, list: [] });
-      byL.get(k).list.push(d);
-    }
-    const keys = Array.from(byL.keys()).sort((a, b) => {
-      const [au, al] = a.split('-').map(Number);
-      const [bu, bl] = b.split('-').map(Number);
-      return au - bu || al - bl;
-    });
-    let html = '';
-    keys.forEach((k) => {
-      const g = byL.get(k);
-      const total = g.list.length;
-      const learned = g.list.filter((d) => wordState(d.word).learned).length;
-      const mastered = g.list.filter((d) => isMastered(d.word)).length;
-      const pct = Math.round((learned / total) * 100);
-      html +=
-        '<div class="lesson-row">' +
-        '<div class="lr-top"><span class="lr-label">' + ESC(lessonLabel(g)) + '</span>' +
-        '<span class="lr-num">' + learned + '/' + total +
-        (mastered ? ' <span class="lr-mastered">★' + mastered + '</span>' : '') +
-        '</span></div>' +
-        '<div class="lr-bar"><div class="lr-fill" style="width:' + pct + '%"></div></div>' +
-        '</div>';
-    });
-    if (!html) html = '<div class="empty">当前范围没有单词</div>';
-    return html;
-  }
-
-  function renderMemorize() {
-    const range = selectedRange();
-    const due = dueWords();
-    const unlearned = range.filter((d) => !wordState(d.word).learned);
-    let learnedAll = 0, masteredAll = 0;
-    for (const d of DATA) {
-      if (wordState(d.word).learned) learnedAll++;
-      if (isMastered(d.word)) masteredAll++;
-    }
-    $('#memDue').textContent = due.length;
-    $('#memLearned').textContent = learnedAll;
-    $('#memMastered').textContent = masteredAll;
-    $('#memNewHint').textContent =
-      '当前范围未学习 ' + unlearned.length + ' 词，本批将学 ' + Math.min(currentBatch, unlearned.length) + ' 词';
-    const learnedInRange = range.filter((d) => wordState(d.word).learned).length;
-    const masteredInRange = range.filter((d) => isMastered(d.word)).length;
-    $('#memRangeSummary').textContent =
-      '范围内共 ' + range.length + ' 词 · 已学 ' + learnedInRange + ' · 已掌握 ' + masteredInRange;
-    $('#memProgress').innerHTML = renderLessonProgress(range);
-    // 批次选中高亮
-    $$('.batch-chip').forEach((b) => b.classList.toggle('active', Number(b.dataset.batch) === currentBatch));
-  }
-
-  function startMemorizeNew() {
-    const range = selectedRange();
-    const words = newWordsInRange(range, currentBatch);
-    if (!words.length) { toast('当前范围没有可背的新词'); return; }
-    startPractice(words, { mode: 'memorize', order: 'seq' });
-  }
-  function startMemorizeReview() {
-    const words = dueWords();
-    if (!words.length) { toast('今日暂无待复习的词'); return; }
-    startPractice(words, { mode: 'memorize', order: 'seq' });
-  }
-
   function finish() {
     const s = session;
     const total = s.words.length;
@@ -528,16 +561,23 @@
     lastSession = s;
 
     if (s.mode === 'memorize') {
+      if (s.simple) {
+        $('#resultNum').textContent = answered;
+        $('#resultLabel').textContent = '已预习单词';
+        $('#resultDet').textContent = '共 ' + total + ' 词 · 已预习 ' + answered + ' 词';
+        $('#retryWrong').textContent = '再学一遍';
+        $('#resultWrongList').innerHTML = '<div class="card"><div class="empty">✅ 本课已预习，到「复习单词」巩固。</div></div>';
+        go('result');
+        return;
+      }
       lastWrongWords = s.words.filter((w, i) => s.answers[i] && s.answers[i].rating !== 'know');
       $('#resultNum').textContent = s.know;
       $('#resultLabel').textContent = '本轮认识';
-      $('#resultDet').textContent =
-        '共 ' + total + ' 词 · 认识 ' + s.know + ' · 模糊 ' + s.fuzzy + ' · 不认识 ' + s.unknown;
+      $('#resultDet').textContent = '共 ' + total + ' 词 · 认识 ' + s.know + ' · 模糊 ' + s.fuzzy + ' · 不认识 ' + s.unknown;
       $('#retryWrong').textContent = '复习待复习';
       const wrongListEl = $('#resultWrongList');
       wrongListEl.innerHTML = lastWrongWords.length
-        ? '<div class="wrong-review-title">本轮待复习词（' + lastWrongWords.length + '）</div>' +
-          lastWrongWords.map(wordItemHTML).join('')
+        ? '<div class="wrong-review-title">本轮待复习词（' + lastWrongWords.length + '）</div>' + lastWrongWords.map(wordItemHTML).join('')
         : '<div class="card"><div class="empty">🎉 全部认识，太棒了！</div></div>';
       go('result');
       return;
@@ -554,14 +594,11 @@
         ? '<div class="card"><div class="empty">本次未作答任何题目。</div></div>'
         : '<div class="card"><div class="empty">🎉 全部答对，太棒了！</div></div>';
     } else {
-      wrongListEl.innerHTML =
-        '<div class="wrong-review-title">本次错题回顾（' + lastWrongWords.length + '）</div>' +
-        lastWrongWords.map(wordItemHTML).join('');
+      wrongListEl.innerHTML = '<div class="wrong-review-title">本次错题回顾（' + lastWrongWords.length + '）</div>' + lastWrongWords.map(wordItemHTML).join('');
     }
     go('result');
   }
 
-  /* ================= 收藏 / 错题列表 ================= */
   function wordItemHTML(w) {
     const s = wordState(w.word);
     const meta = 'Unit ' + w.unit + ' · Lesson ' + w.lesson + (s.wrong > 0 ? ' · 错 ' + s.wrong + ' 次' : '');
@@ -600,15 +637,34 @@
   }
 
   function practiceFavorites() {
-    const words = DATA.filter((d) => wordState(d.word).fav);
-    startPractice(words, { mode: currentMode, order: 'seq' });
+    startPractice(DATA.filter((d) => wordState(d.word).fav), { mode: currentMode, order: 'seq' });
   }
   function practiceWrong() {
-    const words = DATA.filter((d) => wordState(d.word).wrong > 0);
-    startPractice(words, { mode: currentMode, order: 'seq' });
+    startPractice(DATA.filter((d) => wordState(d.word).wrong > 0), { mode: currentMode, order: 'seq' });
   }
 
-  /* ================= 账号 / 云同步 ================= */
+  function resetPreview() {
+    if (!confirm('确定重置「预习进度」吗？所有单词将重新变为未预习。')) return;
+    for (const w of Object.keys(state)) if (state[w]) state[w].previewed = false;
+    saveState();
+    renderPreview();
+    toast('已重置预习进度');
+  }
+  function resetReview() {
+    if (!confirm('确定重置「复习进度」吗？所有词的复习记录（已学/已掌握/复习时间）将清空。')) return;
+    for (const w of Object.keys(state)) {
+      const s = state[w];
+      s.learned = false;
+      s.stage = 0;
+      s.reps = 0;
+      s.nextReview = 0;
+      s.lastRated = null;
+    }
+    saveState();
+    renderReview();
+    toast('已重置复习进度');
+  }
+
   const Cloud = window.Cloud || null;
   let queueSync = debounce(tryPush, 1200);
   async function tryPush() {
@@ -666,10 +722,7 @@
         if (user) {
           form.classList.add('hidden');
           panel.classList.remove('hidden');
-          $('#userName').textContent = user.user_metadata && user.user_metadata.username
-            ? user.user_metadata.username
-            : (user.email || '已登录');
-          $('#syncStatus').textContent = '收藏/错题已开启云端同步。';
+          $('#userName').textContent = user.user_metadata && user.user_metadata.username ? user.user_metadata.username : (user.email || '已登录');
           syncStatusText();
         } else {
           form.classList.remove('hidden');
@@ -704,7 +757,6 @@
       await Cloud.ensure();
       if (action === 'login') await Cloud.signIn(u, p);
       else await Cloud.signUp(u, p);
-      // 注册/登录成功
       localStorage.setItem('cet4_last_user', u);
       hint.textContent = action === 'login' ? '登录成功' : '注册成功，请再次登录';
       await mergeRemote();
@@ -712,21 +764,45 @@
       toast('登录成功');
     } catch (e) {
       const msg = e && e.message ? e.message : String(e);
-      hint.textContent = action === 'login'
-        ? ('登录失败：' + msg)
-        : ('注册失败（可能用户名已存在）：' + msg);
+      hint.textContent = action === 'login' ? ('登录失败：' + msg) : ('注册失败（可能用户名已存在）：' + msg);
     } finally {
       $('#loginBtn').disabled = false;
       $('#registerBtn').disabled = false;
     }
   }
 
-  /* ================= 事件绑定 ================= */
-  function bind() {
-    // 顶部导航
-    $$('.tab').forEach((t) => t.addEventListener('click', () => go(t.dataset.view)));
+  function wireChipGroup(chipSel, fromSel, toSel, after) {
+    $$(chipSel).forEach((c) =>
+      c.addEventListener('click', function () {
+        const kind = this.dataset.range;
+        if (kind === 'all') {
+          $(fromSel).value = lessons[0].u + '-' + lessons[0].l;
+          $(toSel).value = lessons[lessons.length - 1].u + '-' + lessons[lessons.length - 1].l;
+        } else {
+          const u = Number(this.dataset.unit);
+          const last = lessons.filter((l) => l.u === u).pop();
+          $(fromSel).value = lessonKey(u, 1);
+          $(toSel).value = last ? lessonKey(u, last.l) : lessonKey(u, 1);
+        }
+        after();
+      })
+    );
+  }
 
-    // 练法 / 模式
+  function bind() {
+    $$('[data-view]').forEach((t) => t.addEventListener('click', () => go(t.dataset.view)));
+
+    $('#prevLesson').addEventListener('change', renderPreview);
+    $('#revFrom').addEventListener('change', renderReview);
+    $('#revTo').addEventListener('change', renderReview);
+    wireChipGroup('.rev-chip', '#revFrom', '#revTo', renderReview);
+
+    $('#prevStartNew').addEventListener('click', startMemorizeNew);
+    $('#revReviewBtn').addEventListener('click', startMemorizeReview);
+    $('#revStartBtn').addEventListener('click', function () {
+      startPractice(selectedReview(), { mode: currentMode, order: currentOrder });
+    });
+
     $$('#orderSeg .seg-btn').forEach((b) =>
       b.addEventListener('click', function () {
         currentOrder = this.dataset.order;
@@ -744,72 +820,40 @@
       })
     );
 
-    // 范围
-    $('#rangeFrom').addEventListener('change', updateRangeCount);
-    $('#rangeTo').addEventListener('change', updateRangeCount);
-    $$('.chip').forEach((c) =>
-      c.addEventListener('click', function () {
-        const kind = this.dataset.range;
-        if (kind === 'all') {
-          $('#rangeFrom').value = lessons[0].u + '-' + lessons[0].l;
-          $('#rangeTo').value = lessons[lessons.length - 1].u + '-' + lessons[lessons.length - 1].l;
-        } else {
-          const u = Number(this.dataset.unit);
-          const last = lessons.filter((l) => l.u === u).pop();
-          $('#rangeFrom').value = lessonKey(u, 1);
-          $('#rangeTo').value = last ? lessonKey(u, last.l) : lessonKey(u, 1);
-        }
-        updateRangeCount();
-      })
-    );
+    $('#resetPreviewBtn').addEventListener('click', resetPreview);
+    $('#resetReviewBtn').addEventListener('click', resetReview);
 
-    // 开始
-    $('#startBtn').addEventListener('click', function () {
-      startPractice(selectedRange(), { mode: currentMode, order: currentOrder });
-    });
-
-    // 记单词
-    $('#goMemorize').addEventListener('click', () => go('memorize'));
-    $('#memReviewBtn').addEventListener('click', startMemorizeReview);
-    $('#memStartNew').addEventListener('click', startMemorizeNew);
-    $$('.batch-chip').forEach((b) =>
-      b.addEventListener('click', function () {
-        currentBatch = Number(this.dataset.batch);
-        saveBatch();
-        renderMemorize();
-      })
-    );
-
-    // 练习导航
-    $('#exitPractice').addEventListener('click', () => go('home'));
+    $('#exitPractice').addEventListener('click', () => go(session ? session.returnView : (lastSession ? lastSession.returnView : 'preview')));
     $('#prevBtn').addEventListener('click', function () {
-      if (session.idx > 0) {
-        session.idx--;
-        renderQuestion();
-      }
+      if (session.idx > 0) { session.idx--; renderQuestion(); }
     });
     $('#nextBtn').addEventListener('click', function () {
-      if (!session.answers[session.idx]) return;
-      if (session.idx < session.words.length - 1) {
-        session.idx++;
-        renderQuestion();
-      } else {
-        finish();
+      const s = session;
+      if (s.mode === 'memorize' && !s.answers[s.idx]) {
+        s.answers[s.idx] = { rating: 'know', auto: true };
+        s.know += 1;
+        applyRating(s.words[s.idx].word, 'know');
+      } else if (s.mode === 'choice' && !s.answers[s.idx]) {
+        return;
       }
+      if (s.idx < s.words.length - 1) { s.idx++; renderQuestion(); }
+      else finish();
     });
     $('#finishBtn').addEventListener('click', finish);
 
-    // 结果页
     $('#retryWrong').addEventListener('click', function () {
-      if (!lastWrongWords.length) { toast('没有错题'); return; }
-      startPractice(lastWrongWords, { mode: lastSession.mode, order: 'seq' });
+      if (lastSession && lastSession.mode === 'memorize' && lastSession.simple) {
+        startPractice(lastSession.words, { mode: 'memorize', order: 'seq', simple: true, returnView: lastSession.returnView });
+        return;
+      }
+      if (!lastWrongWords.length) { toast(lastSession && lastSession.mode === 'memorize' ? '没有待复习的词' : '没有错题'); return; }
+      startPractice(lastWrongWords, { mode: lastSession.mode, order: 'seq', returnView: lastSession.returnView });
     });
     $('#againBtn').addEventListener('click', function () {
-      if (lastSession) startPractice(lastSession.words, { mode: lastSession.mode, order: lastSession.order });
+      if (lastSession) startPractice(lastSession.words, { mode: lastSession.mode, order: lastSession.order, simple: !!lastSession.simple, returnView: lastSession.returnView });
     });
-    $('#backHomeBtn').addEventListener('click', () => go('home'));
+    $('#backHomeBtn').addEventListener('click', () => go(lastSession ? lastSession.returnView : 'review'));
 
-    // 收藏 / 错题
     $('#practiceFav').addEventListener('click', practiceFavorites);
     $('#practiceWrong').addEventListener('click', practiceWrong);
     $('#clearWrong').addEventListener('click', function () {
@@ -826,7 +870,6 @@
       renderFavorites();
     });
 
-    // 收藏 / 错题列表的操作按钮（事件委托，避免重复绑定）
     $('#favList').addEventListener('click', function (e) {
       const btn = e.target.closest('.wi-btn');
       if (!btn) return;
@@ -852,7 +895,6 @@
       renderWrong();
     });
 
-    // 账号
     $('#loginBtn').addEventListener('click', () => doAuth('login'));
     $('#registerBtn').addEventListener('click', () => doAuth('register'));
     $('#logoutBtn').addEventListener('click', async function () {
@@ -862,12 +904,10 @@
     });
   }
 
-  /* ================= 启动 ================= */
   function init() {
     initRangeSelects();
     bind();
-    go('home');
-    // 恢复上次用户名
+    go('preview');
     const last = localStorage.getItem('cet4_last_user');
     if (last) $('#authUser').value = last;
   }

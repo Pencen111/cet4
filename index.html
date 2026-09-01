@@ -6,215 +6,203 @@
   <meta name="theme-color" content="#ff6a00" />
   <title>英语四级单词刷题 · 驾考宝典风</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles_overrides.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">📖 四级单词刷题</div>
-    <nav class="tabs" id="tabs">
-      <button class="tab active" data-view="home">🏠 首页</button>
-      <button class="tab" data-view="memorize">📖 记单词</button>
-      <button class="tab" data-view="favorites">⭐ 收藏</button>
-      <button class="tab" data-view="wrong">📕 错题</button>
-      <button class="tab" data-view="login">👤 账号</button>
-    </nav>
-  </header>
+  <div class="layout">
+    <aside class="side-nav" id="sideNav">
+      <div class="brand side-brand">📖 四级单词刷题</div>
+      <button class="nav-btn active" data-view="preview">📖 预习单词</button>
+      <button class="nav-btn" data-view="review">🔁 复习单词</button>
+    </aside>
 
-  <main id="app">
-    <!-- 首页 -->
-    <section class="view active" id="view-home">
-      <div class="card">
-        <div class="card-title">练习范围</div>
-        <div class="range-grid">
-          <div class="field">
-            <label>从</label>
-            <select id="rangeFrom"></select>
+    <div class="content">
+      <header class="topbar">
+        <nav class="top-actions">
+          <button class="tab" data-view="favorites">⭐ 收藏</button>
+          <button class="tab" data-view="wrong">📕 错题</button>
+          <button class="tab" data-view="login">👤 账号</button>
+        </nav>
+      </header>
+
+      <main id="app">
+        <!-- 预习单词 -->
+        <section class="view active" id="view-preview">
+          <div class="card">
+            <div class="card-title">选择预习课</div>
+            <div class="field">
+              <label>预习哪一课</label>
+              <select id="prevLesson"></select>
+            </div>
+            <div class="hint">预习只能选择某一课，进度见下方「各单元预习进度」。</div>
           </div>
-          <div class="field">
-            <label>到</label>
-            <select id="rangeTo"></select>
+
+          <div class="card">
+            <div class="card-title">背新词（本课未预习）</div>
+            <div class="hint" id="prevNewHint"></div>
+            <button class="btn-primary btn-big" id="prevStartNew">开始背新单词</button>
           </div>
-        </div>
-        <div class="quick-range">
-          <button class="chip" data-range="unit" data-unit="1">第1单元</button>
-          <button class="chip" data-range="unit" data-unit="2">第2单元</button>
-          <button class="chip" data-range="unit" data-unit="3">第3单元</button>
-          <button class="chip" data-range="unit" data-unit="4">第4单元</button>
-          <button class="chip" data-range="unit" data-unit="5">第5单元</button>
-          <button class="chip" data-range="unit" data-unit="6">第6单元</button>
-          <button class="chip" data-range="unit" data-unit="7">第7单元</button>
-          <button class="chip" data-range="unit" data-unit="8">第8单元</button>
-          <button class="chip" data-range="unit" data-unit="9">第9单元</button>
-          <button class="chip" data-range="unit" data-unit="10">第10单元</button>
-          <button class="chip" data-range="all">全部</button>
-        </div>
-        <div class="hint">提示：用下方两个下拉框可自由选择「某单元→某单元」或「某课→某课」。</div>
-      </div>
 
-      <div class="card">
-        <div class="card-title">练法</div>
-        <div class="seg" id="orderSeg">
-          <button class="seg-btn active" data-order="seq">顺序练习</button>
-          <button class="seg-btn" data-order="rand">随机练习</button>
-          <button class="seg-btn" data-order="unit">单元练习</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">答题方式</div>
-        <div class="seg" id="modeSeg">
-          <button class="seg-btn active" data-mode="choice">四选一</button>
-          <button class="seg-btn" data-mode="memorize">记单词</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">今日任务</div>
-        <div class="task-row">
-          <div class="task-item"><div class="stat-num" id="taskDue">0</div><div class="stat-label">待复习</div></div>
-          <div class="task-item"><div class="stat-num" id="taskNew">0</div><div class="stat-label">范围新词</div></div>
-        </div>
-        <button class="btn-primary btn-big" id="goMemorize">开始记单词</button>
-      </div>
-
-      <div class="stats" id="homeStats">
-        <div class="stat"><div class="stat-num" id="stAnswered">0</div><div class="stat-label">已答</div></div>
-        <div class="stat"><div class="stat-num" id="stAcc">--</div><div class="stat-label">正确率</div></div>
-        <div class="stat"><div class="stat-num" id="stFav">0</div><div class="stat-label">收藏</div></div>
-        <div class="stat"><div class="stat-num" id="stWrong">0</div><div class="stat-label">错题</div></div>
-      </div>
-
-      <div class="count-line" id="rangeCount"></div>
-      <button class="btn-primary btn-big" id="startBtn">开始练习</button>
-    </section>
-
-    <!-- 记单词 -->
-    <section class="view" id="view-memorize">
-      <div class="card">
-        <div class="card-title">今日任务</div>
-        <div class="task-row">
-          <div class="task-item"><div class="stat-num" id="memDue">0</div><div class="stat-label">今日待复习</div></div>
-          <div class="task-item"><div class="stat-num" id="memMastered">0</div><div class="stat-label">已掌握(全部)</div></div>
-          <div class="task-item"><div class="stat-num" id="memLearned">0</div><div class="stat-label">已学(全部)</div></div>
-        </div>
-        <button class="btn-primary btn-big" id="memReviewBtn">开始复习今日词</button>
-      </div>
-
-      <div class="card">
-        <div class="card-title">背新词（当前范围 · 未学习）</div>
-        <div class="batch-row">
-          <span class="batch-label">每批</span>
-          <button class="chip batch-chip active" data-batch="20">20</button>
-          <button class="chip batch-chip" data-batch="10">10</button>
-          <button class="chip batch-chip" data-batch="30">30</button>
-          <button class="chip batch-chip" data-batch="50">50</button>
-        </div>
-        <div class="hint" id="memNewHint"></div>
-        <button class="btn-primary btn-big" id="memStartNew">开始背新词</button>
-      </div>
-
-      <div class="card">
-        <div class="card-title">范围内学习进度</div>
-        <div class="range-summary" id="memRangeSummary"></div>
-        <div id="memProgress"></div>
-      </div>
-    </section>
-
-    <!-- 练习 -->
-    <section class="view" id="view-practice">
-      <div class="practice-head">
-        <button class="btn-ghost" id="exitPractice">← 返回</button>
-        <div class="progress-wrap">
-          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-          <div class="progress-text" id="progressText">1 / 10</div>
-        </div>
-        <div class="score-chip" id="practiceScore">✅ 0  ❌ 0</div>
-      </div>
-      <div class="q-wrap" id="questionBox"></div>
-      <div class="nav-row">
-        <button class="btn-ghost" id="prevBtn">‹ 上一题</button>
-        <button class="btn-primary" id="nextBtn">下一题 ›</button>
-        <button class="btn-ghost" id="finishBtn">交卷</button>
-      </div>
-    </section>
-
-    <!-- 结果 -->
-    <section class="view" id="view-result">
-      <div class="card result-card">
-        <div class="result-score">
-          <div class="result-num" id="resultNum">0</div>
-          <div class="result-label" id="resultLabel">正确率</div>
-        </div>
-        <div class="result-det" id="resultDet"></div>
-        <div class="result-actions">
-          <button class="btn-primary" id="retryWrong">错题重做</button>
-          <button class="btn-ghost" id="againBtn">再练一遍</button>
-          <button class="btn-ghost" id="backHomeBtn">返回首页</button>
-        </div>
-      </div>
-      <div id="resultWrongList"></div>
-    </section>
-
-    <!-- 收藏 -->
-    <section class="view" id="view-favorites">
-      <div class="list-head">
-        <div class="card-title">⭐ 收藏单词（<span id="favCount">0</span>）</div>
-        <div class="list-actions">
-          <button class="btn-primary" id="practiceFav">练这些</button>
-          <button class="btn-ghost" id="clearFavSearch">清空搜索</button>
-        </div>
-      </div>
-      <input class="search" id="favSearch" placeholder="搜索收藏的单词…" />
-      <div id="favList"></div>
-    </section>
-
-    <!-- 错题 -->
-    <section class="view" id="view-wrong">
-      <div class="list-head">
-        <div class="card-title">📕 错题本（<span id="wrongCount">0</span>）</div>
-        <div class="list-actions">
-          <button class="btn-primary" id="practiceWrong">重做错题</button>
-          <button class="btn-ghost" id="clearWrong">清空错题</button>
-        </div>
-      </div>
-      <input class="search" id="wrongSearch" placeholder="搜索错题的单词…" />
-      <div id="wrongList"></div>
-    </section>
-
-    <!-- 账号 -->
-    <section class="view" id="view-login">
-      <div class="card login-card">
-        <div class="card-title">账号与云同步</div>
-        <div id="cloudBanner"></div>
-        <div id="authForm">
-          <div class="field">
-            <label>用户名</label>
-            <input id="authUser" type="text" autocomplete="username" placeholder="例如：xiaowang" />
+          <div class="card">
+            <div class="card-title">各单元预习进度</div>
+            <div id="unitProgress"></div>
+            <button class="btn-ghost btn-reset" id="resetPreviewBtn">重置预习进度</button>
           </div>
-          <div class="field">
-            <label>密码（至少 6 位）</label>
-            <input id="authPass" type="password" autocomplete="current-password" placeholder="••••••" />
+        </section>
+
+        <!-- 复习单词 -->
+        <section class="view" id="view-review">
+          <div class="card">
+            <div class="card-title">今日任务</div>
+            <div class="task-row">
+              <div class="task-item"><div class="stat-num" id="revDue">0</div><div class="stat-label">今日待复习</div></div>
+              <div class="task-item"><div class="stat-num" id="revMem">0</div><div class="stat-label">已掌握</div></div>
+              <div class="task-item"><div class="stat-num" id="revLearned">0</div><div class="stat-label">已复习</div></div>
+            </div>
+            <button class="btn-primary btn-big" id="revReviewBtn">开始复习今日词</button>
           </div>
-          <div class="auth-btns">
-            <button class="btn-primary" id="loginBtn">登录</button>
-            <button class="btn-ghost" id="registerBtn">注册新账号</button>
+
+          <div class="card">
+            <div class="card-title">练习</div>
+            <div class="card-sub">复习范围</div>
+            <div class="range-grid">
+              <div class="field"><label>从</label><select id="revFrom"></select></div>
+              <div class="field"><label>到</label><select id="revTo"></select></div>
+            </div>
+            <div class="quick-range">
+              <button class="chip rev-chip" data-range="unit" data-unit="1">第1单元</button>
+              <button class="chip rev-chip" data-range="unit" data-unit="2">第2单元</button>
+              <button class="chip rev-chip" data-range="unit" data-unit="3">第3单元</button>
+              <button class="chip rev-chip" data-range="unit" data-unit="4">第4单元</button>
+              <button class="chip rev-chip" data-range="unit" data-unit="5">第5单元</button>
+              <button class="chip rev-chip" data-range="unit" data-unit="6">第6单元</button>
+              <button class="chip rev-chip" data-range="unit" data-unit="7">第7单元</button>
+              <button class="chip rev-chip" data-range="unit" data-unit="8">第8单元</button>
+              <button class="chip rev-chip" data-range="unit" data-unit="9">第9单元</button>
+              <button class="chip rev-chip" data-range="unit" data-unit="10">第10单元</button>
+              <button class="chip rev-chip" data-range="all">全部</button>
+            </div>
+            <div class="card-sub">练法</div>
+            <div class="seg" id="orderSeg">
+              <button class="seg-btn active" data-order="seq">顺序</button>
+              <button class="seg-btn" data-order="rand">随机</button>
+              <button class="seg-btn" data-order="unit">单元</button>
+            </div>
+            <div class="card-sub">答题方式</div>
+            <div class="seg" id="modeSeg">
+              <button class="seg-btn active" data-mode="choice">四选一</button>
+              <button class="seg-btn" data-mode="memorize">记单词</button>
+            </div>
+            <div class="count-line" id="revRangeCount"></div>
+            <button class="btn-primary btn-big" id="revStartBtn">开始练习</button>
           </div>
-          <div class="hint" id="authHint"></div>
-        </div>
-        <div id="userPanel" class="hidden">
-          <div class="hint">当前账号：<b id="userName"></b></div>
-          <button class="btn-ghost" id="logoutBtn">退出登录</button>
-          <div class="hint" id="syncStatus"></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">本地模式说明</div>
-        <div class="hint">未配置云端时，收藏与错题只保存在当前浏览器（本地）。配置 Supabase 并登录后，可在手机/平板/电脑间同步。详见 <code>README.md</code>。</div>
-      </div>
-    </section>
-  </main>
+
+          <div class="stats" id="revStats">
+            <div class="stat"><div class="stat-num" id="stAnswered">0</div><div class="stat-label">已答</div></div>
+            <div class="stat"><div class="stat-num" id="stAcc">--</div><div class="stat-label">正确率</div></div>
+            <div class="stat"><div class="stat-num" id="stFav">0</div><div class="stat-label">收藏</div></div>
+            <div class="stat"><div class="stat-num" id="stWrong">0</div><div class="stat-label">错题</div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">复习进度</div>
+            <div class="range-summary" id="revProgressSummary"></div>
+            <div id="revProgress"></div>
+            <button class="btn-ghost btn-reset" id="resetReviewBtn">重置复习进度</button>
+          </div>
+        </section>
+
+        <!-- 练习 -->
+        <section class="view" id="view-practice">
+          <div class="practice-head">
+            <button class="btn-ghost" id="exitPractice">← 返回</button>
+            <div class="progress-wrap">
+              <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+              <div class="progress-text" id="progressText">1 / 10</div>
+            </div>
+            <div class="score-chip" id="practiceScore">✅ 0  ❌ 0</div>
+          </div>
+          <div class="q-wrap" id="questionBox"></div>
+          <div class="nav-row">
+            <button class="btn-ghost" id="prevBtn">‹ 上一题</button>
+            <button class="btn-primary" id="nextBtn">下一题 ›</button>
+            <button class="btn-ghost" id="finishBtn">交卷</button>
+          </div>
+        </section>
+
+        <!-- 结果 -->
+        <section class="view" id="view-result">
+          <div class="card result-card">
+            <div class="result-score">
+              <div class="result-num" id="resultNum">0</div>
+              <div class="result-label" id="resultLabel">正确率</div>
+            </div>
+            <div class="result-det" id="resultDet"></div>
+            <div class="result-actions">
+              <button class="btn-primary" id="retryWrong">错题重做</button>
+              <button class="btn-ghost" id="againBtn">再练一遍</button>
+              <button class="btn-ghost" id="backHomeBtn">返回</button>
+            </div>
+          </div>
+          <div id="resultWrongList"></div>
+        </section>
+
+        <!-- 收藏 -->
+        <section class="view" id="view-favorites">
+          <div class="list-head">
+            <div class="card-title">⭐ 收藏单词（<span id="favCount">0</span>）</div>
+            <div class="list-actions">
+              <button class="btn-primary" id="practiceFav">练这些</button>
+              <button class="btn-ghost" id="clearFavSearch">清空搜索</button>
+            </div>
+          </div>
+          <input class="search" id="favSearch" placeholder="搜索收藏的单词…" />
+          <div id="favList"></div>
+        </section>
+
+        <!-- 错题 -->
+        <section class="view" id="view-wrong">
+          <div class="list-head">
+            <div class="card-title">📕 错题本（<span id="wrongCount">0</span>）</div>
+            <div class="list-actions">
+              <button class="btn-primary" id="practiceWrong">重做错题</button>
+              <button class="btn-ghost" id="clearWrong">清空错题</button>
+            </div>
+          </div>
+          <input class="search" id="wrongSearch" placeholder="搜索错题的单词…" />
+          <div id="wrongList"></div>
+        </section>
+
+        <!-- 账号 -->
+        <section class="view" id="view-login">
+          <div class="card login-card">
+            <div class="card-title">账号与云同步</div>
+            <div id="cloudBanner"></div>
+            <div id="authForm">
+              <div class="field"><label>用户名</label><input id="authUser" type="text" autocomplete="username" placeholder="例如：xiaowang" /></div>
+              <div class="field"><label>密码（至少 6 位）</label><input id="authPass" type="password" autocomplete="current-password" placeholder="••••••" /></div>
+              <div class="auth-btns">
+                <button class="btn-primary" id="loginBtn">登录</button>
+                <button class="btn-ghost" id="registerBtn">注册新账号</button>
+              </div>
+              <div class="hint" id="authHint"></div>
+            </div>
+            <div id="userPanel" class="hidden">
+              <div class="hint">当前账号：<b id="userName"></b></div>
+              <button class="btn-ghost" id="logoutBtn">退出登录</button>
+              <div class="hint" id="syncStatus"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">本地模式说明</div>
+            <div class="hint">未配置云端时，收藏与错题只保存在当前浏览器（本地）。配置 Supabase 并登录后，可在手机/平板/电脑间同步。详见 <code>README.md</code>。</div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
 
   <div class="toast" id="toast"></div>
-
   <script src="config.js"></script>
   <script src="data.js"></script>
   <script src="cloud.js"></script>

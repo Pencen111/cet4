@@ -1,0 +1,52 @@
+/* 布局微调：品牌放左栏顶部，预习/复习两个按钮在它下方 */
+
+/* 顶栏现在只有右侧操作（收藏/错题/账号），靠右对齐 */
+.topbar { justify-content: flex-end; }
+
+/* 左栏品牌标题 */
+.brand.side-brand {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 2px 4px 12px;
+  padding: 0 6px;
+  line-height: 1.35;
+}
+
+/* 预习「看完点下一题」提示居中 */
+.center-hint { text-align: center; }
+
+/* 重置按钮（危险样式） */
+.btn-reset {
+  margin-top: 12px;
+  color: #d9363e;
+  border-color: #ffd6d6;
+  background: #fff;
+}
+.btn-reset:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+
+/* 练习页：题目区固定高度，内容多时在区内滚动，下一题始终在其下方同一位置 */
+#view-practice .q-wrap {
+  height: clamp(300px, 52vh, 520px);
+  overflow-y: auto;
+}
+
+/* 窄屏：左栏变顶部块，品牌一行，两个按钮一行 */
+@media (max-width: 700px) {
+  .side-nav {
+    flex-direction: column;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .side-nav .nav-btn {
+    flex: 1 1 auto;
+    text-align: center;
+    padding: 10px 8px;
+    font-size: 14px;
+  }
+  .brand.side-brand {
+    text-align: left;
+    font-size: 15px;
+    margin: 2px 2px 4px;
+  }
+}
