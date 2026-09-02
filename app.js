@@ -102,6 +102,14 @@
   }
 
   let view = 'preview';
+  function collapseNav() {
+    const n = $('#sideNav');
+    if (n) n.classList.add('collapsed');
+  }
+  function toggleNav() {
+    const n = $('#sideNav');
+    if (n) n.classList.toggle('collapsed');
+  }
   function go(v) {
     view = v;
     $$('.view').forEach((el) => el.classList.toggle('active', el.id === 'view-' + v));
@@ -114,7 +122,7 @@
     window.scrollTo(0, 0);
   }
 
-  let currentOrder = prefs.order;
+  let currentOrder = prefs.order === 'unit' ? 'seq' : prefs.order;
   let currentMode = prefs.mode === 'card' ? 'memorize' : prefs.mode;
 
   function fillLessonSelect(sel) {
@@ -122,20 +130,17 @@
       .map((l) => '<option value="' + lessonKey(l.u, l.l) + '">' + ESC(lessonLabel(l)) + '</option>')
       .join('');
   }
+  function fillUnitSelect(sel) {
+    sel.innerHTML = '<option value="all">全部</option>' +
+      UNIT_NUMS.map((u) => '<option value="' + u + '">第' + u + '单元</option>').join('');
+  }
   function initRangeSelects() {
     const pl = $('#prevLesson');
-    if (pl) {
-      fillLessonSelect(pl);
-      pl.value = lessons[0].u + '-' + lessons[0].l;
-    }
+    if (pl) { fillLessonSelect(pl); pl.value = lessons[0].u + '-' + lessons[0].l; }
     const rf = $('#revFrom');
     const rt = $('#revTo');
-    if (rf && rt) {
-      fillLessonSelect(rf);
-      fillLessonSelect(rt);
-      rf.value = lessons[0].u + '-' + lessons[0].l;
-      rt.value = lessons[lessons.length - 1].u + '-' + lessons[lessons.length - 1].l;
-    }
+    if (rf && rt) { fillLessonSelect(rf); fillLessonSelect(rt); rf.value = lessons[0].u + '-' + lessons[0].l; rt.value = lessons[lessons.length - 1].u + '-' + lessons[lessons.length - 1].l; }
+    ['#prevResetUnit', '#quizResetUnit', '#memResetUnit'].forEach((id) => { const s = $(id); if (s) fillUnitSelect(s); });
   }
   function selectedPreview() {
     const k = $('#prevLesson').value;
@@ -153,19 +158,29 @@
   function renderUnitProgress() {
     let html = '';
     UNIT_NUMS.forEach((u) => {
-      const list = DATA.filter((d) => d.unit === u);
-      const total = list.length;
-      const previewed = list.filter((d) => wordState(d.word).previewed).length;
-      const mastered = list.filter((d) => isMastered(d.word)).length;
+      const unitWords = DATA.filter((d) => d.unit === u);
+      const total = unitWords.length;
+      const previewed = unitWords.filter((d) => wordState(d.word).previewed).length;
       const pct = total ? Math.round((previewed / total) * 100) : 0;
+      const byL = {};
+      unitWords.forEach((d) => { (byL[d.lesson] = byL[d.lesson] || []).push(d); });
+      const lessonNums = Object.keys(byL).map(Number).sort((a, b) => a - b);
+      let segHtml = '';
+      lessonNums.forEach((ln, i) => {
+        const list = byL[ln];
+        const ltotal = list.length;
+        const lpre = list.filter((d) => wordState(d.word).previewed).length;
+        const width = total ? (ltotal / total) * 100 : 0;
+        const fill = ltotal ? Math.round((lpre / ltotal) * 100) : 0;
+        segHtml +=
+          '<div class="seg" style="width:' + width + '%' + (i > 0 ? ';border-left:2px dashed #c8cdd6' : '') + '">' +
+          '<div class="seg-fill" style="width:' + fill + '%"></div></div>';
+      });
       html +=
-        '<div class="lesson-row">' +
+        '<div class="unit-prog">' +
         '<div class="lr-top"><span class="lr-label">第 ' + u + ' 单元</span>' +
-        '<span class="lr-num">已预习 ' + previewed + '/' + total + ' · ' + pct + '%' +
-        (mastered ? ' <span class="lr-mastered">★' + mastered + '</span>' : '') +
-        '</span></div>' +
-        '<div class="lr-bar"><div class="lr-fill" style="width:' + pct + '%"></div></div>' +
-        '</div>';
+        '<span class="lr-num">已预习 ' + previewed + '/' + total + ' · ' + pct + '%</span></div>' +
+        '<div class="seg-bar">' + segHtml + '</div></div>';
     });
     $('#unitProgress').innerHTML = html || '<div class="empty">暂无数据</div>';
   }
@@ -176,6 +191,37 @@
     $('#prevNewHint').textContent =
       '本课共 ' + range.length + ' 词，未预习 ' + unPre.length + ' 词，点「开始背新单词」预习全部未预习的词。';
     renderUnitProgress();
+  }
+
+  function renderQuizProgress() {
+    let html = '';
+    UNIT_NUMS.forEach((u) => {
+      const list = DATA.filter((d) => d.unit === u);
+      const total = list.length;
+      const done = list.filter((d) => wordState(d.word).correct > 0).length;
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      html +=
+        '<div class="lesson-row"><div class="lr-top"><span class="lr-label">第 ' + u + ' 单元</span>' +
+        '<span class="lr-num">答对 ' + done + '/' + total + ' · ' + pct + '%</span></div>' +
+        '<div class="lr-bar"><div class="lr-fill" style="width:' + pct + '%"></div></div></div>';
+    });
+    $('#quizProgress').innerHTML = html || '<div class="empty">暂无数据</div>';
+  }
+
+  function renderMemProgress() {
+    let html = '';
+    UNIT_NUMS.forEach((u) => {
+      const list = DATA.filter((d) => d.unit === u);
+      const total = list.length;
+      const learned = list.filter((d) => wordState(d.word).learned).length;
+      const mastered = list.filter((d) => isMastered(d.word)).length;
+      const pct = total ? Math.round((learned / total) * 100) : 0;
+      html +=
+        '<div class="lesson-row"><div class="lr-top"><span class="lr-label">第 ' + u + ' 单元</span>' +
+        '<span class="lr-num">已学 ' + learned + '/' + total + ' · 已掌握 ' + mastered + '</span></div>' +
+        '<div class="lr-bar"><div class="lr-fill" style="width:' + pct + '%"></div></div></div>';
+    });
+    $('#memProgress').innerHTML = html || '<div class="empty">暂无数据</div>';
   }
 
   function renderReview() {
@@ -203,24 +249,19 @@
     $('#stFav').textContent = fav;
     $('#stWrong').textContent = wrong > 0 ? Object.keys(state).filter((w) => state[w].wrong > 0).length : 0;
 
-    const range = selectedReview();
-    $('#revRangeCount').textContent = '当前复习范围共 ' + range.length + ' 个单词';
-    const mastered = range.filter((d) => isMastered(d.word)).length;
-    $('#revProgressSummary').textContent = '范围内共 ' + range.length + ' 词 · 已掌握 ' + mastered + ' · 已复习 ' + range.filter((d) => wordState(d.word).learned).length;
-    $('#revProgress').innerHTML = renderLessonProgress(range, true);
+    $('#revRangeCount').textContent = '当前复习范围共 ' + selectedReview().length + ' 个单词';
+    renderQuizProgress();
+    renderMemProgress();
     syncSegUI();
+    const qCard = $('#quizProgress') ? $('#quizProgress').closest('.card') : null;
+    const mCard = $('#memProgress') ? $('#memProgress').closest('.card') : null;
+    if (qCard) qCard.classList.toggle('hidden', currentMode !== 'choice');
+    if (mCard) mCard.classList.toggle('hidden', currentMode !== 'memorize');
   }
 
   function markPreviewed(word) {
     const s = wordState(word);
     if (!s.previewed) s.previewed = true;
-    if (!s.learned) {
-      s.learned = true;
-      s.stage = Math.min((s.stage || 0) + 1, MASTER_STAGE);
-      s.reps = (s.reps || 0) + 1;
-      s.nextReview = Date.now() + REVIEW_INTERVALS[0] * DAY;
-      s.lastRated = 'know';
-    }
     saveState();
   }
 
@@ -265,40 +306,6 @@
     return d + ' 天后';
   }
 
-  function renderLessonProgress(range, useMastered) {
-    const byL = new Map();
-    for (const d of range) {
-      const k = d.unit + '-' + d.lesson;
-      if (!byL.has(k)) byL.set(k, { u: d.unit, l: d.lesson, list: [] });
-      byL.get(k).list.push(d);
-    }
-    const keys = Array.from(byL.keys()).sort((a, b) => {
-      const [au, al] = a.split('-').map(Number);
-      const [bu, bl] = b.split('-').map(Number);
-      return au - bu || al - bl;
-    });
-    let html = '';
-    keys.forEach((k) => {
-      const g = byL.get(k);
-      const total = g.list.length;
-      const doneCount = useMastered
-        ? g.list.filter((d) => isMastered(d.word)).length
-        : g.list.filter((d) => wordState(d.word).learned).length;
-      const starred = g.list.filter((d) => isMastered(d.word)).length;
-      const pct = Math.round((doneCount / total) * 100);
-      html +=
-        '<div class="lesson-row">' +
-        '<div class="lr-top"><span class="lr-label">' + ESC(lessonLabel(g)) + '</span>' +
-        '<span class="lr-num">' + (useMastered ? '已掌握 ' : '') + doneCount + '/' + total +
-        (starred ? ' <span class="lr-mastered">★' + starred + '</span>' : '') +
-        '</span></div>' +
-        '<div class="lr-bar"><div class="lr-fill" style="width:' + pct + '%"></div></div>' +
-        '</div>';
-    });
-    if (!html) html = '<div class="empty">当前范围没有单词</div>';
-    return html;
-  }
-
   function startMemorizeNew() {
     const words = selectedPreview().filter((d) => !wordState(d.word).previewed);
     if (!words.length) { toast('本课没有可预习的新词'); return; }
@@ -315,19 +322,7 @@
   let lastWrongWords = [];
 
   function orderWords(words, order) {
-    if (order === 'rand') return shuffle(words);
-    if (order === 'unit') {
-      const byUnit = new Map();
-      for (const w of words) {
-        if (!byUnit.has(w.unit)) byUnit.set(w.unit, []);
-        byUnit.get(w.unit).push(w);
-      }
-      const units = Array.from(byUnit.keys()).sort((a, b) => a - b);
-      const out = [];
-      for (const u of units) out.push(...shuffle(byUnit.get(u)));
-      return out;
-    }
-    return words.slice();
+    return order === 'rand' ? shuffle(words) : words.slice();
   }
 
   function isStudyView(v) {
@@ -386,11 +381,12 @@
     if (s.idx >= s.words.length) return finish();
     const w = s.words[s.idx];
     const total = s.words.length;
+    const answeredSoFar = s.answers.filter((a) => a !== null).length;
     $('#progressFill').style.width = (((s.idx + 1) / total) * 100) + '%';
     $('#progressText').textContent = (s.idx + 1) + ' / ' + total;
     $('#practiceScore').textContent = s.mode === 'choice'
       ? '✅ ' + s.correct + '  ❌ ' + s.wrong
-      : (s.simple ? '已学 ' + s.know : '认识 ' + s.know + ' · 模糊 ' + s.fuzzy + ' · 不知 ' + s.unknown);
+      : (s.simple ? '已预习 ' + answeredSoFar : '认识 ' + s.know + ' · 模糊 ' + s.fuzzy + ' · 不知 ' + s.unknown);
     $('#prevBtn').disabled = s.idx === 0;
     $('#nextBtn').textContent = s.idx === total - 1 ? '完成 ✓' : '下一题 ›';
     $('#nextBtn').disabled = s.mode === 'choice' ? !s.answers[s.idx] : false;
@@ -518,8 +514,7 @@
         });
       }
     } else if (!ans) {
-      session.answers[session.idx] = { rating: 'know', auto: true };
-      session.know += 1;
+      session.answers[session.idx] = { auto: true };
       markPreviewed(w.word);
     }
     wireFav();
@@ -562,10 +557,12 @@
         $('#resultLabel').textContent = '已预习单词';
         $('#resultDet').textContent = '共 ' + total + ' 词 · 已预习 ' + answered + ' 词';
         $('#retryWrong').textContent = '再学一遍';
+        $('#againBtn').classList.add('hidden');
         $('#resultWrongList').innerHTML = '<div class="card"><div class="empty">✅ 本课已预习，到「复习单词」巩固。</div></div>';
         go('result');
         return;
       }
+      $('#againBtn').classList.remove('hidden');
       lastWrongWords = s.words.filter((w, i) => s.answers[i] && s.answers[i].rating !== 'know');
       $('#resultNum').textContent = s.know;
       $('#resultLabel').textContent = '本轮认识';
@@ -573,11 +570,12 @@
       $('#retryWrong').textContent = '复习待复习';
       const wrongListEl = $('#resultWrongList');
       wrongListEl.innerHTML = lastWrongWords.length
-        ? '<div class="wrong-review-title">本轮待复习词（' + lastWrongWords.length + '）</div>' + lastWrongWords.map(wordItemHTML).join('')
+        ? '<div class="wrong-review-title">本轮待复习词（' + lastWrongWords.length + '）</div>' + lastWrongWords.map(resultWordHTML).join('')
         : '<div class="card"><div class="empty">🎉 全部认识，太棒了！</div></div>';
       go('result');
       return;
     }
+    $('#againBtn').classList.remove('hidden');
     lastWrongWords = s.words.filter((w, i) => s.answers[i] && !s.answers[i].correct);
     $('#retryWrong').textContent = '错题重做';
     $('#resultNum').textContent = answered === 0 ? '--' : Math.round((s.correct / answered) * 100) + '%';
@@ -589,7 +587,7 @@
         ? '<div class="card"><div class="empty">本次未作答任何题目。</div></div>'
         : '<div class="card"><div class="empty">🎉 全部答对，太棒了！</div></div>';
     } else {
-      wrongListEl.innerHTML = '<div class="wrong-review-title">本次错题回顾（' + lastWrongWords.length + '）</div>' + lastWrongWords.map(wordItemHTML).join('');
+      wrongListEl.innerHTML = '<div class="wrong-review-title">本次错题回顾（' + lastWrongWords.length + '）</div>' + lastWrongWords.map(resultWordHTML).join('');
     }
     go('result');
   }
@@ -601,14 +599,43 @@
     const btnLabel = onWrong ? '移出错题' : '取消收藏';
     return (
       '<div class="word-item" data-word="' + ESC(w.word) + '">' +
-      '<div class="wi-main">' +
-      '<div><span class="wi-word">' + ESC(w.word) + '</span><span class="wi-pos">' + ESC(w.pos || '') + '</span></div>' +
-      '<div class="wi-meaning">' + ESC(w.meaning) + '</div>' +
-      '<div class="wi-meta">' + ESC(meta) + '</div>' +
-      '</div>' +
-      '<div class="wi-actions"><button class="wi-btn" data-remove="' + onWrong + '">' + btnLabel + '</button></div>' +
+      '<div class="wi-main"><div><span class="wi-word">' + ESC(w.word) + '</span><span class="wi-pos">' + ESC(w.pos || '') + '</span></div>' +
+      '<div class="wi-meaning">' + ESC(w.meaning) + '</div><div class="wi-meta">' + ESC(meta) + '</div></div>' +
+      '<div class="wi-actions"><button class="wi-btn" data-remove="' + onWrong + '">' + btnLabel + '</button></div></div>'
+    );
+  }
+
+  function resultWordHTML(w) {
+    const s = wordState(w.word);
+    const fav = s.fav;
+    const label = fav ? '★ 取消收藏' : '☆ 加入收藏';
+    return (
+      '<div class="word-item">' +
+      '<div class="wi-main"><div><span class="wi-word">' + ESC(w.word) + '</span><span class="wi-pos">' + ESC(w.pos || '') + '</span></div>' +
+      '<div class="wi-meaning">' + ESC(w.meaning) + '</div></div>' +
+      '<div class="wi-actions"><button class="wi-btn" data-fav="' + ESC(w.word) + '" data-lab="' + label + '">' + label + '</button></div>' +
       '</div>'
     );
+  }
+
+  function modalWordHTML(w) {
+    return (
+      '<div class="word-item"><div class="wi-main"><div><span class="wi-word">' + ESC(w.word) + '</span><span class="wi-pos">' + ESC(w.pos || '') + '</span></div>' +
+      '<div class="wi-meaning">' + ESC(w.meaning) + '</div></div></div>'
+    );
+  }
+
+  function openListModal(kind) {
+    let title, words;
+    if (kind === 'due') { title = '今日待复习'; words = dueWords(); }
+    else if (kind === 'mastered') { title = '已掌握'; words = DATA.filter((d) => isMastered(d.word)); }
+    else { title = '已复习'; words = DATA.filter((d) => wordState(d.word).learned); }
+    $('#modalTitle').textContent = title + '（' + words.length + ' 词）';
+    $('#modalBody').innerHTML = words.length ? words.map(modalWordHTML).join('') : '<div class="empty">暂无</div>';
+    $('#modalOverlay').classList.remove('hidden');
+  }
+  function closeModal() {
+    $('#modalOverlay').classList.add('hidden');
   }
 
   function renderFavorites() {
@@ -625,10 +652,31 @@
     const q = ($('#wrongSearch').value || '').trim().toLowerCase();
     const words = DATA.filter((d) => wordState(d.word).wrong > 0 && (!q || d.word.toLowerCase().includes(q) || (d.meaning || '').toLowerCase().includes(q)));
     $('#wrongCount').textContent = words.length;
-    $('#wrongList').innerHTML =
-      words.length === 0
-        ? '<div class="card"><div class="empty">' + (q ? '没有匹配的错题' : '错题本是空的，继续加油！') + '</div></div>'
-        : words.map(wordItemHTML).join('');
+    if (words.length === 0) {
+      $('#wrongList').innerHTML = '<div class="card"><div class="empty">' + (q ? '没有匹配的错题' : '错题本是空的，继续加油！') + '</div></div>';
+      return;
+    }
+    const groups = {};
+    words.forEach((d) => {
+      const k = d.unit + '-' + d.lesson;
+      if (!groups[k]) groups[k] = { u: d.unit, l: d.lesson, list: [] };
+      groups[k].list.push(d);
+    });
+    const keys = Object.keys(groups).sort((a, b) => {
+      const [au, al] = a.split('-').map(Number);
+      const [bu, bl] = b.split('-').map(Number);
+      return au - bu || al - bl;
+    });
+    let html = '';
+    keys.forEach((k) => {
+      const g = groups[k];
+      html +=
+        '<div class="wrong-group">' +
+        '<button class="wrong-head" data-key="' + k + '">' + ESC(lessonLabel({ u: g.u, l: g.l })) + ' · ' + g.list.length + ' 词 <span class="wtoggle">▸</span></button>' +
+        '<div class="wrong-body hidden" data-key="' + k + '">' + g.list.map(wordItemHTML).join('') + '</div>' +
+        '</div>';
+    });
+    $('#wrongList').innerHTML = html;
   }
 
   function practiceFavorites() {
@@ -638,26 +686,35 @@
     startPractice(DATA.filter((d) => wordState(d.word).wrong > 0), { mode: currentMode, order: 'seq' });
   }
 
-  function resetPreview() {
-    if (!confirm('确定重置「预习进度」吗？所有单词将重新变为未预习。')) return;
-    for (const w of Object.keys(state)) if (state[w]) state[w].previewed = false;
+  function selectedUnit(selId) {
+    const v = $(selId).value;
+    return v === 'all' ? null : Number(v);
+  }
+  function resetTrack(u, mut) {
+    const list = u ? DATA.filter((d) => d.unit === u) : DATA;
+    list.forEach((d) => { const w = d.word; if (state[w]) mut(state[w]); });
     saveState();
+  }
+  function resetPreview() {
+    const u = selectedUnit('#prevResetUnit');
+    if (!confirm(u ? ('确定重置第' + u + '单元的预习进度吗？') : '确定重置全部预习进度吗？')) return;
+    resetTrack(u, (s) => { s.previewed = false; });
     renderPreview();
     toast('已重置预习进度');
   }
-  function resetReview() {
-    if (!confirm('确定重置「复习进度」吗？所有词的复习记录（已学/已掌握/复习时间）将清空。')) return;
-    for (const w of Object.keys(state)) {
-      const s = state[w];
-      s.learned = false;
-      s.stage = 0;
-      s.reps = 0;
-      s.nextReview = 0;
-      s.lastRated = null;
-    }
-    saveState();
+  function resetQuiz() {
+    const u = selectedUnit('#quizResetUnit');
+    if (!confirm(u ? ('确定重置第' + u + '单元的四选一进度吗？') : '确定重置全部四选一进度吗？')) return;
+    resetTrack(u, (s) => { s.correct = 0; s.wrong = 0; });
     renderReview();
-    toast('已重置复习进度');
+    toast('已重置四选一进度');
+  }
+  function resetMem() {
+    const u = selectedUnit('#memResetUnit');
+    if (!confirm(u ? ('确定重置第' + u + '单元的记单词进度吗？') : '确定重置全部记单词进度吗？')) return;
+    resetTrack(u, (s) => { s.learned = false; s.stage = 0; s.reps = 0; s.nextReview = 0; s.lastRated = null; });
+    renderReview();
+    toast('已重置记单词进度');
   }
 
   const Cloud = window.Cloud || null;
@@ -695,11 +752,7 @@
     }
   }
   async function autoLoginSync() {
-    if (!Cloud || !Cloud.configured()) {
-      // Sync local changes to no-op; nothing to do without cloud
-      renderLogin();
-      return;
-    }
+    if (!Cloud || !Cloud.configured()) { renderLogin(); return; }
     try {
       await Cloud.ensure();
       const user = await Cloud.currentUser();
@@ -805,7 +858,11 @@
   }
 
   function bind() {
-    $$('[data-view]').forEach((t) => t.addEventListener('click', () => go(t.dataset.view)));
+    $$('[data-view]').forEach((t) => t.addEventListener('click', function () {
+      go(t.dataset.view);
+      if (window.innerWidth <= 700) collapseNav();
+    }));
+    $('#navToggle').addEventListener('click', toggleNav);
     $('#prevLesson').addEventListener('change', renderPreview);
     $('#revFrom').addEventListener('change', renderReview);
     $('#revTo').addEventListener('change', renderReview);
@@ -830,10 +887,21 @@
         prefs.mode = currentMode;
         savePrefs();
         syncSegUI();
+        renderReview();
       })
     );
+
     $('#resetPreviewBtn').addEventListener('click', resetPreview);
-    $('#resetReviewBtn').addEventListener('click', resetReview);
+    $('#resetQuizBtn').addEventListener('click', resetQuiz);
+    $('#resetMemBtn').addEventListener('click', resetMem);
+
+    $('#viewDue').addEventListener('click', () => openListModal('due'));
+    $('#viewMastered').addEventListener('click', () => openListModal('mastered'));
+    $('#viewLearned').addEventListener('click', () => openListModal('learned'));
+    $('#modalClose').addEventListener('click', closeModal);
+    $('#modalOverlay').addEventListener('click', function (e) {
+      if (e.target === this) closeModal();
+    });
 
     $('#exitPractice').addEventListener('click', () => go(session ? session.returnView : (lastSession ? lastSession.returnView : 'preview')));
     $('#prevBtn').addEventListener('click', function () {
@@ -866,6 +934,21 @@
     });
     $('#backHomeBtn').addEventListener('click', () => go(lastSession ? lastSession.returnView : 'review'));
 
+    // 结果页错题列表：加入收藏/取消收藏
+    $('#resultWrongList').addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-fav]');
+      if (!btn) return;
+      const w = DATA.find((d) => d.word === btn.getAttribute('data-fav'));
+      if (!w) return;
+      const s = wordState(w.word);
+      s.fav = !s.fav;
+      saveState();
+      const label = s.fav ? '★ 取消收藏' : '☆ 加入收藏';
+      btn.textContent = label;
+      btn.setAttribute('data-lab', label);
+      toast(s.fav ? '已收藏' : '已取消收藏');
+    });
+
     $('#practiceFav').addEventListener('click', practiceFavorites);
     $('#practiceWrong').addEventListener('click', practiceWrong);
     $('#clearWrong').addEventListener('click', function () {
@@ -893,6 +976,16 @@
       renderFavorites();
     });
     $('#wrongList').addEventListener('click', function (e) {
+      const head = e.target.closest('.wrong-head');
+      if (head) {
+        const body = head.nextElementSibling;
+        if (body) {
+          body.classList.toggle('hidden');
+          const t = head.querySelector('.wtoggle');
+          if (t) t.textContent = body.classList.contains('hidden') ? '▸' : '▾';
+        }
+        return;
+      }
       const btn = e.target.closest('.wi-btn');
       if (!btn) return;
       const item = btn.closest('.word-item');

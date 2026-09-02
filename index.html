@@ -18,6 +18,7 @@
 
     <div class="content">
       <header class="topbar">
+        <button class="nav-toggle" id="navToggle" title="菜单">☰</button>
         <nav class="top-actions">
           <button class="tab" data-view="favorites">⭐ 收藏</button>
           <button class="tab" data-view="wrong">📕 错题</button>
@@ -46,7 +47,10 @@
           <div class="card">
             <div class="card-title">各单元预习进度</div>
             <div id="unitProgress"></div>
-            <button class="btn-ghost btn-reset" id="resetPreviewBtn">重置预习进度</button>
+            <div class="reset-row">
+              <select id="prevResetUnit" class="reset-unit"></select>
+              <button class="btn-ghost btn-reset" id="resetPreviewBtn">重置</button>
+            </div>
           </div>
         </section>
 
@@ -55,9 +59,21 @@
           <div class="card">
             <div class="card-title">今日任务</div>
             <div class="task-row">
-              <div class="task-item"><div class="stat-num" id="revDue">0</div><div class="stat-label">今日待复习</div></div>
-              <div class="task-item"><div class="stat-num" id="revMem">0</div><div class="stat-label">已掌握</div></div>
-              <div class="task-item"><div class="stat-num" id="revLearned">0</div><div class="stat-label">已复习</div></div>
+              <div class="task-item">
+                <div class="stat-num" id="revDue">0</div>
+                <div class="stat-label">今日待复习</div>
+                <button class="view-btn" id="viewDue">查看</button>
+              </div>
+              <div class="task-item">
+                <div class="stat-num" id="revMem">0</div>
+                <div class="stat-label">已掌握</div>
+                <button class="view-btn" id="viewMastered">查看</button>
+              </div>
+              <div class="task-item">
+                <div class="stat-num" id="revLearned">0</div>
+                <div class="stat-label">已复习</div>
+                <button class="view-btn" id="viewLearned">查看</button>
+              </div>
             </div>
             <button class="btn-primary btn-big" id="revReviewBtn">开始复习今日词</button>
           </div>
@@ -86,7 +102,6 @@
             <div class="seg" id="orderSeg">
               <button class="seg-btn active" data-order="seq">顺序</button>
               <button class="seg-btn" data-order="rand">随机</button>
-              <button class="seg-btn" data-order="unit">单元</button>
             </div>
             <div class="card-sub">答题方式</div>
             <div class="seg" id="modeSeg">
@@ -105,10 +120,31 @@
           </div>
 
           <div class="card">
-            <div class="card-title">复习进度</div>
-            <div class="range-summary" id="revProgressSummary"></div>
-            <div id="revProgress"></div>
-            <button class="btn-ghost btn-reset" id="resetReviewBtn">重置复习进度</button>
+            <div class="card-title">四选一进度</div>
+            <div id="quizProgress"></div>
+            <div class="reset-row">
+              <select id="quizResetUnit" class="reset-unit"></select>
+              <button class="btn-ghost btn-reset" id="resetQuizBtn">重置</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">记单词进度</div>
+            <div id="memProgress"></div>
+            <div class="reset-row">
+              <select id="memResetUnit" class="reset-unit"></select>
+              <button class="btn-ghost btn-reset" id="resetMemBtn">重置</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">进度说明</div>
+            <div class="hint" style="margin-top:0">
+              <b>今日待复习</b>：复习周期里“今天到了该复习时间”的词（按 1 → 2 → 4 → 7 → 15 天的遗忘曲线）。<br />
+              <b>已复习（已学）</b>：在“记单词”里背过至少一次（认识 / 模糊 / 不认识任意一次），就进入了复习周期，即算已复习。<br />
+              <b>已掌握</b>：某词每次“认识”都会把下次复习间隔拉长到 1 → 2 → 4 → 7 → 15 天；一旦达到最长的 15 天那一档，就标记为已掌握。<br />
+              三者关系：先「已复习」进入复习周期 → 通过反复“认识”逐步巩固 → 最终「已掌握」；「今日待复习」是今天应该练的词。
+            </div>
           </div>
         </section>
 
@@ -199,6 +235,13 @@
           </div>
         </section>
       </main>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-head"><span id="modalTitle"></span><button class="modal-close" id="modalClose">✕</button></div>
+      <div class="modal-body" id="modalBody"></div>
     </div>
   </div>
 
