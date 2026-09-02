@@ -76,7 +76,8 @@
   }
   function pull(userId) {
     if (!sb) return Promise.resolve({});
-    return sb.from('word_state').select('*').eq('user_id', userId).then(function (r) {
+    // 关键：Supabase 查询默认最多返回 1000 行，必须显式 limit 才能“拉全”
+    return sb.from('word_state').select('*').eq('user_id', userId).limit(100000).then(function (r) {
       if (r.error) throw r.error;
       var map = {};
       (r.data || []).forEach(function (row) {
@@ -122,13 +123,15 @@
     for (var i = 0; i < rows.length; i += CHUNK) {
       (function (chunk) {
         chain = chain.then(function () {
-          return sb.from('word_state').upsert(chunk, { onConflict: 'user_id,word' });
+          return sb.from('word_state')
+            .upsert(chunk, { onConflict: 'user_id,word' });
         }).then(function (r) {
           if (r.error) throw r.error;
         });
       })(rows.slice(i, i + CHUNK));
     }
-    return chain.catch(function (e) { console.warn('sync push failed', e); });
+    // 不再吞掉错误：若某批失败会抛给调用方，手动同步可见真实原因
+    return chain;
   }
 
   window.Cloud = {
