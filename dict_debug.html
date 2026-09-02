@@ -1,0 +1,38 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>词库诊断</title></head>
+<body style="font-family:monospace;padding:16px;line-height:1.6;white-space:pre-wrap;">
+<h2>词库（data.js）每单元词数</h2>
+<div id="out">加载中…</div>
+<script src="data.js"></script>
+<script>
+(function(){
+  var out=document.getElementById('out');
+  var lines=[];
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  var arr = window.VOCAB || window.vocab || window.WORDS || window.words || window.DATA || window.data;
+  if(!arr){
+    var cands=[];
+    try{Object.keys(window).forEach(function(k){ if(/data|vocab|word|dict/i.test(k)) cands.push(k); });}catch(e){}
+    lines.push('未找到词库变量。候选全局变量名: '+cands.join(', '));
+    out.textContent=lines.join('\n');
+    return;
+  }
+  if(Array.isArray(arr) && arr.length===0){ lines.push('词库是空数组'); out.textContent=lines.join('\n'); return; }
+  var byUnit={}, byLesson={};
+  (Array.isArray(arr)?arr:Object.keys(arr).map(function(k){return arr[k];})).forEach(function(w){
+    if(!w||typeof w!=='object') return;
+    var u=w.unit!=null?w.unit:(w.Unit!=null?w.Unit:'?');
+    var l=w.lesson!=null?w.lesson:(w.Lesson!=null?w.Lesson:(w.lesson_no!=null?w.lesson_no:'?'));
+    byUnit[u]=(byUnit[u]||0)+1;
+    byLesson[u+'-'+l]=(byLesson[u+'-'+l]||0)+1;
+  });
+  lines.push('词条数: '+(Array.isArray(arr)?arr.length:Object.keys(arr).length));
+  lines.push('首条字段: '+esc(JSON.stringify((Array.isArray(arr)?arr[0]:arr[Object.keys(arr)[0]]))));
+  lines.push('--- 每单元词数 ---');
+  Object.keys(byUnit).sort().forEach(function(u){ lines.push('单元 '+u+': '+byUnit[u]); });
+  lines.push('--- 第1单元各课 ---');
+  Object.keys(byLesson).filter(function(k){return k.split('-')[0]==='1';}).sort().forEach(function(k){ lines.push('  '+k+': '+byLesson[k]); });
+  out.textContent=lines.join('\n');
+})();
+</script>
+</body></html>
