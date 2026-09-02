@@ -74,29 +74,43 @@
       return r.data.user || null;
     }).catch(function () { return null; });
   }
+
+  // 分页拉取：每页 1000 行，循环取完所有（绕开 Supabase 单次最多 1000 行的限制）
   function pull(userId) {
     if (!sb) return Promise.resolve({});
-    // 关键：Supabase 查询默认最多返回 1000 行，必须显式 limit 才能“拉全”
-    return sb.from('word_state').select('*').eq('user_id', userId).limit(100000).then(function (r) {
-      if (r.error) throw r.error;
-      var map = {};
-      (r.data || []).forEach(function (row) {
-        map[row.word] = {
-          fav: !!row.favorite,
-          wrong: row.wrong_count || 0,
-          correct: row.correct_count || 0,
-          last: row.last_result || null,
-          previewed: !!row.previewed,
-          learned: !!row.learned,
-          stage: row.stage || 0,
-          reps: row.reps || 0,
-          nextReview: row.next_review ? new Date(row.next_review).getTime() : 0,
-          lastRated: row.last_rated || null
-        };
-      });
-      return map;
-    });
+    var PAGE = 1000;
+    var map = {};
+    function fetchPage(offset) {
+      return sb.from('word_state')
+        .select('*')
+        .eq('user_id', userId)
+        .range(offset, offset + PAGE - 1)
+        .then(function (r) {
+          if (r.error) throw r.error;
+          var rows = r.data || [];
+          rows.forEach(function (row) {
+            map[row.word] = {
+              fav: !!row.favorite,
+              wrong: row.wrong_count || 0,
+              correct: row.correct_count || 0,
+              last: row.last_result || null,
+              previewed: !!row.previewed,
+              learned: !!row.learned,
+              stage: row.stage || 0,
+              reps: row.reps || 0,
+              nextReview: row.next_review ? new Date(row.next_review).getTime() : 0,
+              lastRated: row.last_rated || null
+            };
+          });
+          if (rows.length === PAGE) {
+            return fetchPage(offset + PAGE);
+          }
+          return map;
+        });
+    }
+    return fetchPage(0);
   }
+
   function push(userId, state) {
     if (!sb) return Promise.resolve();
     var words = Object.keys(state || {});
@@ -123,14 +137,12 @@
     for (var i = 0; i < rows.length; i += CHUNK) {
       (function (chunk) {
         chain = chain.then(function () {
-          return sb.from('word_state')
-            .upsert(chunk, { onConflict: 'user_id,word' });
+          return sb.from('word_state').upsert(chunk, { onConflict: 'user_id,word' });
         }).then(function (r) {
           if (r.error) throw r.error;
         });
       })(rows.slice(i, i + CHUNK));
     }
-    // 不再吞掉错误：若某批失败会抛给调用方，手动同步可见真实原因
     return chain;
   }
 
