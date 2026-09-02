@@ -20,7 +20,7 @@
     msgEl.style.background = isErr ? '#d9363e' : 'rgba(20,28,38,.92)';
     msgEl.textContent = msg;
     clearTimeout(msgEl._t);
-    msgEl._t = setTimeout(function () { msgEl.remove(); msgEl = null; }, 5000);
+    msgEl._t = setTimeout(function () { msgEl.remove(); msgEl = null; }, 6000);
   }
 
   function inject() {
@@ -46,17 +46,19 @@
       if (!user) { status('未登录：请到「账号」页用同一个用户名+密码登录', true); return; }
       var uid = user.id;
       var local = load();
-      // 1) 先把本地全量传到云端，避免漏掉刚做的改动
+      var localCount = Object.keys(local).length;
+      // 1) 先把本地全量传到云端
       await C.push(uid, local);
       // 2) 拉取云端（含所有设备数据）
       var remote = await C.pull(uid);
+      var remoteCount = Object.keys(remote).length;
       // 3) 云端覆盖已知词，保留本地独有词，再存回本地
       Object.keys(remote).forEach(function (w) { local[w] = remote[w]; });
       save(local);
-      // 4) 把合并结果再推回云端，保证本地独有词也在云端
+      // 4) 把合并结果再推回云端
       await C.push(uid, local);
-      status('已同步账号：' + (user.email || uid) + '\n即将刷新页面加载最新数据。');
-      setTimeout(function () { location.reload(); }, 900);
+      status('已同步账号：' + (user.email || uid) + '\n本地上传 ' + localCount + ' 词 · 云端拉取 ' + remoteCount + ' 词\n即将刷新页面加载最新数据。');
+      setTimeout(function () { location.reload(); }, 1100);
     } catch (e) {
       status('同步失败：' + (e && e.message ? e.message : String(e)), true);
     } finally {
