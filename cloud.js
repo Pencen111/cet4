@@ -146,6 +146,57 @@
     return chain;
   }
 
+  // 每课「首次全部完成记单词」的日期：表 lesson_done(user_id, unit, lesson, done_on)
+  // 返回 { "1-1": "2026-09-02", ... }；表不存在时抛错，由调用方 try/catch 吞掉（不影响词状态同步）。
+  function pullLessonDone(userId) {
+    if (!sb) return Promise.resolve({});
+    var PAGE = 1000;
+    var map = {};
+    function fetchPage(offset) {
+      return sb.from('lesson_done')
+        .select('*')
+        .eq('user_id', userId)
+        .range(offset, offset + PAGE - 1)
+        .then(function (r) {
+          if (r.error) throw r.error;
+          var rows = r.data || [];
+          rows.forEach(function (row) {
+            map[row.unit + '-' + row.lesson] = String(row.done_on || '').slice(0, 10);
+          });
+          if (rows.length === PAGE) return fetchPage(offset + PAGE);
+          return map;
+        });
+    }
+    return fetchPage(0);
+  }
+
+  function pushLessonDone(userId, map) {
+    if (!sb) return Promise.resolve();
+    var keys = Object.keys(map || {});
+    var rows = keys.map(function (k) {
+      var parts = String(k).split('-');
+      return {
+        user_id: userId,
+        unit: Number(parts[0]),
+        lesson: Number(parts[1]),
+        done_on: map[k],
+        updated_at: new Date().toISOString()
+      };
+    });
+    var CHUNK = 200;
+    var chain = Promise.resolve();
+    for (var i = 0; i < rows.length; i += CHUNK) {
+      (function (chunk) {
+        chain = chain.then(function () {
+          return sb.from('lesson_done').upsert(chunk, { onConflict: 'user_id,unit,lesson' });
+        }).then(function (r) {
+          if (r.error) throw r.error;
+        });
+      })(rows.slice(i, i + CHUNK));
+    }
+    return chain;
+  }
+
   window.Cloud = {
     configured: isConfigured,
     ensure: ensure,
@@ -154,6 +205,8 @@
     signOut: signOut,
     currentUser: currentUser,
     pull: pull,
-    push: push
+    push: push,
+    pullLessonDone: pullLessonDone,
+    pushLessonDone: pushLessonDone
   };
 })();

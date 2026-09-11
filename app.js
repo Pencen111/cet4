@@ -40,6 +40,19 @@
 
   const LS_STATE = 'cet4_word_state_v1';
   const LS_PREFS = 'cet4_prefs_v1';
+  // 每课「首次全部完成记单词」的日期，独立存储：
+  // 独立键的原因——sync.js 用 mergeWord() 白名单整体覆盖 cet4_word_state_v1，塞在里面会被抹掉。
+  const LS_LESSON_DONE = 'cet4_lesson_done_v1';
+  // 预设日期（用户指定）：这 6 课一打开即显示；1.3 与 1.4 同为 9-7。
+  const LESSON_DONE_PRESET = {
+    '1-1': '2026-09-02',
+    '1-2': '2026-09-05',
+    '1-3': '2026-09-07',
+    '1-4': '2026-09-07',
+    '2-1': '2026-09-08',
+    '2-2': '2026-09-09',
+    '2-3': '2026-09-10'
+  };
 
   function loadJSON(key, fallback) {
     try {
@@ -57,6 +70,9 @@
 
   let state = loadJSON(LS_STATE, {});
   let prefs = Object.assign({ mode: 'choice', order: 'seq' }, loadJSON(LS_PREFS, {}));
+  let openUnits = prefs.openUnits || {};       // 记单词进度里已展开的单元
+  let lessonDone = {};                         // { '1-1': '2026-09-02', ... }
+  let sawAllLesson = {};                       // 本次会话是否见过该课「全部已学」
   const saveState = () => {
     saveJSON(LS_STATE, state);
     queueSync();
@@ -89,6 +105,53 @@
   }
   const lessonLabel = (t) => 'Unit ' + t.u + ' · Lesson ' + t.l;
   const lessonKey = (u, l) => u + '-' + l;
+
+  /* ---------- 每课「首次全部完成记单词」的日期 ---------- */
+
+  function applyLessonPreset(raw) {
+    const out = raw && typeof raw === 'object' ? raw : {};
+    Object.keys(LESSON_DONE_PRESET).forEach((k) => {
+      if (!out[k]) out[k] = LESSON_DONE_PRESET[k];
+    });
+    return out;
+  }
+  const saveLessonDone = () => {
+    saveJSON(LS_LESSON_DONE, lessonDone);
+    queueSync();
+  };
+  // 按课索引词条（模块初始化时算一次，避免每次评分都全库过滤）
+  const wordsByLesson = {};
+  DATA.forEach((d) => {
+    const k = d.unit + '-' + d.lesson;
+    (wordsByLesson[k] = wordsByLesson[k] || []).push(d);
+  });
+  function lessonWords(u, l) {
+    return wordsByLesson[u + '-' + l] || [];
+  }
+  // 该课是否已「全部完成记单词」：所有词都进入 learned（与卡片上「已学」计数同一标准）。
+  function lessonAllLearned(u, l) {
+    const list = lessonWords(u, l);
+    return list.length > 0 && list.every((d) => wordState(d.word).learned);
+  }
+  // 首次全部完成时记下当天日期；已有日期永不改写。
+  function recordLessonDone(u, l) {
+    const k = lessonKey(u, l);
+    if (lessonDone[k]) return;
+    if (!lessonAllLearned(u, l)) return;
+    const d = new Date();
+    lessonDone[k] =
+      d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+    saveLessonDone();
+  }
+  // '2026-09-07' → '9-7'
+  function fmtLessonDate(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    return m ? Number(m[2]) + '-' + Number(m[3]) : '—';
+  }
+  lessonDone = applyLessonPreset(loadJSON(LS_LESSON_DONE, {}));
+  saveJSON(LS_LESSON_DONE, lessonDone);
 
   function getRangeWords(fromKey, toKey) {
     const fi = lessonIdx[fromKey];
@@ -216,10 +279,32 @@
       const learned = list.filter((d) => wordState(d.word).learned).length;
       const mastered = list.filter((d) => isMastered(d.word)).length;
       const pct = total ? Math.round((learned / total) * 100) : 0;
+      const byL = {};
+      list.forEach((d) => { (byL[d.lesson] = byL[d.lesson] || []).push(d); });
+      const lessonNums = Object.keys(byL).map(Number).sort((a, b) => a - b);
+      let lessonHtml = '';
+      lessonNums.forEach((ln) => {
+        const llist = byL[ln];
+        const ltotal = llist.length;
+        const llearned = llist.filter((d) => wordState(d.word).learned).length;
+        const k = lessonKey(u, ln);
+        const done = lessonDone[k];
+        let val = '—';
+        if (done) val = fmtLessonDate(done);
+        else if (llearned > 0 && ltotal > 0) val = '已学 ' + llearned + '/' + ltotal;
+        lessonHtml +=
+          '<div class="lesson-date"><span class="ld-name">Lesson ' + ln + '</span>' +
+          '<span class="ld-val' + (done ? '' : ' ld-pending') + '">' + ESC(val) + '</span></div>';
+      });
+      const open = !!openUnits[u];
       html +=
-        '<div class="lesson-row"><div class="lr-top"><span class="lr-label">第 ' + u + ' 单元</span>' +
-        '<span class="lr-num">已学 ' + learned + '/' + total + ' · 已掌握 ' + mastered + '</span></div>' +
-        '<div class="lr-bar"><div class="lr-fill" style="width:' + pct + '%"></div></div></div>';
+        '<div class="lesson-row" data-unit="' + u + '">' +
+        '<div class="lr-top"><span class="lr-label">第 ' + u + ' 单元</span>' +
+        '<span class="lr-right"><span class="lr-num">已学 ' + learned + '/' + total + ' · 已掌握 ' + mastered + '</span>' +
+        '<button class="lr-toggle" data-ltoggle="' + u + '" aria-expanded="' + (open ? 'true' : 'false') + '" ' +
+        'title="展开/收起本单元各课的完成日期">' + (open ? '▾' : '▸') + '</button></span></div>' +
+        '<div class="lr-bar"><div class="lr-fill" style="width:' + pct + '%"></div></div>' +
+        '<div class="lesson-body' + (open ? '' : ' hidden') + '" data-lbody="' + u + '">' + lessonHtml + '</div></div>';
     });
     $('#memProgress').innerHTML = html || '<div class="empty">暂无数据</div>';
   }
@@ -283,6 +368,12 @@
       s.nextReview = now + REVIEW_INTERVALS[0] * DAY;
     }
     saveState();
+    // 每课「首次全部完成记单词」的日期：本课所有词都学过了就记下当天（已有日期不改写）。
+    const wd = DATA.find((d) => d.word === word);
+    if (wd) {
+      sawAllLesson[lessonKey(wd.unit, wd.lesson)] = true;
+      recordLessonDone(wd.unit, wd.lesson);
+    }
     return s;
   }
 
@@ -713,8 +804,22 @@
     const u = selectedUnit('#memResetUnit');
     if (!confirm(u ? ('确定重置第' + u + '单元的记单词进度吗？') : '确定重置全部记单词进度吗？')) return;
     resetTrack(u, (s) => { s.learned = false; s.stage = 0; s.reps = 0; s.nextReview = 0; s.lastRated = null; });
+    applyLessonReset(u);
     renderReview();
     toast('已重置记单词进度');
+  }
+  // 重置记单词进度时，「完成日期」一并清掉（进度归零，「已完成」不再成立）；
+  // 预设的 6 课日期是既定事实，会在下一次 applyLessonPreset 里恢复。
+  function applyLessonReset(u) {
+    let changed = false;
+    Object.keys(lessonDone).forEach((k) => {
+      const lu = Number(String(k).split('-')[0]);
+      if (!u || lu === u) { delete lessonDone[k]; delete sawAllLesson[k]; changed = true; }
+    });
+    if (changed) {
+      lessonDone = applyLessonPreset(lessonDone);
+      saveLessonDone();
+    }
   }
 
   const Cloud = window.Cloud || null;
@@ -723,7 +828,10 @@
     if (!Cloud || !Cloud.configured()) return;
     try {
       const user = await Cloud.currentUser();
-      if (user) await Cloud.push(user.id, state);
+      if (user) {
+        await Cloud.push(user.id, state);
+        if (Cloud.pushLessonDone) await Cloud.pushLessonDone(user.id, lessonDone);
+      }
     } catch (e) {
       console.warn('sync push failed', e);
     }
@@ -744,6 +852,21 @@
       if (changed) {
         saveJSON(LS_STATE, state);
         await Cloud.push(user.id, state);
+      }
+      // 课完成日期：与云端取并集，同一课取较早的日期（与 sync.js 里 nextReview 取 min 同向）。
+      // 方向只从云端补进本机，绝不用空数据覆盖真实日期。
+      if (Cloud.pullLessonDone) {
+        const remoteLessons = await Cloud.pullLessonDone(user.id);
+        let lChanged = false;
+        for (const k of Object.keys(remoteLessons || {})) {
+          const r = remoteLessons[k];
+          if (r && (!lessonDone[k] || r < lessonDone[k])) { lessonDone[k] = r; lChanged = true; }
+        }
+        if (lChanged) {
+          lessonDone = applyLessonPreset(lessonDone);
+          saveJSON(LS_LESSON_DONE, lessonDone);
+        }
+        if (Cloud.pushLessonDone) await Cloud.pushLessonDone(user.id, lessonDone);
       }
       return true;
     } catch (e) {
@@ -894,6 +1017,20 @@
     $('#resetPreviewBtn').addEventListener('click', resetPreview);
     $('#resetQuizBtn').addEventListener('click', resetQuiz);
     $('#resetMemBtn').addEventListener('click', resetMem);
+    // 记单词进度：单元右侧下拉按钮，展开本单元 4 课的完成日期
+    $('#memProgress').addEventListener('click', function (e) {
+      const btn = e.target.closest('.lr-toggle');
+      if (!btn) return;
+      const u = btn.getAttribute('data-ltoggle');
+      const body = $('#memProgress [data-lbody="' + u + '"]');
+      if (!body) return;
+      const open = !body.classList.toggle('hidden');
+      btn.textContent = open ? '▾' : '▸';
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      openUnits[u] = open;
+      prefs.openUnits = openUnits;
+      savePrefs();
+    });
 
     $('#viewDue').addEventListener('click', () => openListModal('due'));
     $('#viewMastered').addEventListener('click', () => openListModal('mastered'));
